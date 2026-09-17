@@ -445,10 +445,12 @@ const isOverridden = id => !!state.overrides[id];
 const allTasks = () => TASKS.filter(t=>!state.hidden.includes(t.id)).map(t=>state.overrides[t.id] ? {...state.overrides[t.id], id:t.id} : t).concat(state.custom);
 const findTask = id => allTasks().find(t=>t.id===id);
 const hiddenTasks = () => TASKS.filter(t=>state.hidden.includes(t.id));
-// default accountable / responsible people for the standard tasks, keyed by task id so they follow the
-// task even if it is later moved to another team. People set on the Tasks tab override these.
+// default accountable / responsible people for the standard tasks, keyed by task id so they apply to the
+// existing tasks only and follow a task even if it is later moved to another team. People set on the
+// Tasks tab override these.
 const DEFAULT_ROLES={};
 TASKS.filter(t=>t.team==="ops").forEach(t=>{ DEFAULT_ROLES[t.id]={ a:"Michael", r:"Matt Henry" }; });
+TASKS.filter(t=>t.team==="comp").forEach(t=>{ DEFAULT_ROLES[t.id]={ a:"Michael", r:"Diara" }; });
 const roleOf = id => state.roles[id] || DEFAULT_ROLES[id] || {};
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const whoText = t => { const r=roleOf(t.id); const bits=[]; if(r.a) bits.push("A: "+r.a); if(r.r) bits.push("R: "+r.r); return bits.join(" · "); };
