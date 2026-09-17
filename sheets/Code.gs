@@ -6,14 +6,16 @@
  * into the tracker's Settings (left rail, Set up). Full steps are in sheets/README.md.
  *
  * The tracker page calls this script with:
- *   GET  ?action=ping&key=...          -> { ok, version, updatedAt, updatedBy, sheetUrl }
- *   GET  ?action=version&key=...       -> same as ping (used for the once-a-minute check)
+ *   GET  ?action=ping&key=...          -> { ok, version, stamp, updatedAt, updatedBy, sheetUrl }
+ *   GET  ?action=version&key=...       -> same as ping (used for the once-a-minute check; stamp also
+ *                                         reflects row counts, so rows deleted by hand are noticed)
  *   GET  ?action=state&key=...         -> { ok, version, updatedAt, updatedBy, sheetUrl, data: { ...tabs as JSON } }
  *   POST (text/plain JSON body) { key, action: "put", baseVersion, updatedBy, message, data }
  *        -> { ok, version } or { ok: false, conflict: true, version } when someone else saved first
  *
  * Data is kept in plain tabs so people can read and filter it directly. Every save rewrites the tabs from
- * the page's merged copy and bumps the version number on the Meta tab.
+ * the page's merged copy and bumps the version number on the Meta tab. Editing a value by hand also bumps
+ * the version (onEdit below), so connected pages pick hand edits up within a minute.
  */
 
 var TABS = {
@@ -124,9 +126,13 @@ function num_(v) { var n = Number(v); return isFinite(n) && v !== "" && v !== nu
 function meta_() {
   var m = {};
   rows_("Meta").forEach(function (r) { m[str_(r[0])] = r[1]; });
+  var version = num_(m.version) || 0;
+  // row counts per data tab: cheap, and they change when rows are added or deleted by hand
+  var counts = Object.keys(TABS).filter(function (n) { return n !== "Meta"; }).map(function (n) { return Math.max(0, sheet_(n).getLastRow() - 1); });
   return {
     ok: true,
-    version: num_(m.version) || 0,
+    version: version,
+    stamp: version + ":" + counts.join(","),
     updatedAt: str_(m.updatedAt),
     updatedBy: str_(m.updatedBy),
     message: str_(m.message),
@@ -200,6 +206,34 @@ function writeAll_(d, updatedBy, message) {
 
 function taskRow_(t, kind, id) {
   return [id || t.id, kind, t.team, t.freq, t.dow || "", t.dom || "", t.name, t.desc || ""];
+}
+
+/**
+ * Simple trigger: runs when someone edits a cell by hand. Bumps the version so pages notice the change on
+ * their next check. Row deletions do not always fire this, which is why the stamp above also carries row
+ * counts. Script writes never trigger it, so saves from the page do not double-bump.
+ */
+function onEdit(e) {
+  try {
+    var sh = e && e.range && e.range.getSheet && e.range.getSheet();
+    var name = sh && sh.getName ? sh.getName() : "";
+    if (!name || name === "Meta" || !TABS[name]) return;
+    bumpVersion_("edited by hand in the " + name + " tab");
+  } catch (err) {}
+}
+// Installable trigger option (Triggers > Add trigger > onChange > From spreadsheet > On change) for
+// structural edits such as deleting rows. Optional: the row-count stamp already covers deletions.
+function onChange(e) {
+  try { bumpVersion_("changed by hand in the sheet"); } catch (err) {}
+}
+function bumpVersion_(message) {
+  var version = (meta_().version || 0) + 1;
+  setRows_("Meta", [
+    ["version", version],
+    ["updatedAt", new Date().toISOString()],
+    ["updatedBy", "(sheet edit)"],
+    ["message", message]
+  ]);
 }
 
 /** Run once from the editor to create the tabs and check the password property. */

@@ -924,6 +924,7 @@ const SYNC_DEBOUNCE_MS=2500;
 let sync={ mode:"sheet", url:"", key:"", owner:"", repo:"", branch:"tracker-data", path:"data/tracker.json", token:"", name:"", minutes:10 };
 try{ const saved=JSON.parse(localStorage.getItem(SYNC_KEY))||{}; if(!saved.mode) saved.mode=saved.token?"github":"sheet"; Object.assign(sync,saved); }catch(e){}
 let sheetInfo={ url:"", updatedAt:"", updatedBy:"", message:"" }; // what the sheet last told us about itself
+let lastPutStamp=null; // stamp returned by the sheet after our last save
 let base=null; // { sha, data } as last seen on GitHub
 try{ base=JSON.parse(localStorage.getItem(BASE_KEY)); }catch(e){}
 let syncState={ kind:"off", text:"Not connected", at:0 };
@@ -1068,9 +1069,11 @@ async function sheetCall(action,body){
 // -> { notModified:true } | { found:false } | { found:true, ver, data }
 async function remoteGet(conditional){
   if(sync.mode==="sheet"){
-    if(conditional&&base){ const m=await sheetCall("version"); if(Number(m.version||0)===Number(base.ver||0)) return { notModified:true }; }
+    // the stamp is version plus row counts per tab, so rows deleted by hand are noticed even when the
+    // version was not bumped
+    if(conditional&&base&&base.stamp){ const m=await sheetCall("version"); if(String(m.stamp||m.version)===String(base.stamp)) return { notModified:true }; }
     const r=await sheetCall("state");
-    return { found:true, ver:Number(r.version||0), data:pickShared(fromStored(Object.assign({ done:{} },r.data||{}))) };
+    return { found:true, ver:Number(r.version||0), stamp:String(r.stamp||r.version||0), data:pickShared(fromStored(Object.assign({ done:{} },r.data||{}))) };
   }
   const cond=conditional&&etag ? { "If-None-Match":etag } : null;
   try{
@@ -1086,6 +1089,7 @@ async function remotePut(merged,remote,ver){
   if(sync.mode==="sheet"){
     const r=await sheetCall("put",{ action:"put", baseVersion:ver||0, updatedBy:sync.name||"", message, data:merged });
     if(r.conflict){ const e=new Error("conflict"); e.conflict=true; throw e; }
+    lastPutStamp=String(r.stamp||r.version||0);
     return Number(r.version||0);
   }
   if(!remote) await ensureBranch();
@@ -1102,22 +1106,25 @@ async function runSync(reason){
   try{
     // 1. what is stored right now. With nothing changed here since the last sync, only ask whether the
     //    version moved (GitHub: ETag / 304, sheet: a cheap version call) and stop if it did not.
+    //    Sync now, the timer, startup and connect always fetch in full so edits made by hand in the store
+    //    are picked up even if its version did not move.
     const nothingLocal=!!(base&&base.data&&same(pickShared(state),base.data));
-    const r=await remoteGet(nothingLocal&&!syncTimer);
+    const quick=reason==="check"||reason==="focus"||reason==="online";
+    const r=await remoteGet(quick&&nothingLocal&&!syncTimer);
     if(r.notModified){ setSync("ok","Synced"); return; }
-    const remote=r.found?r.data:null; let ver=r.found?r.ver:null;
+    const remote=r.found?r.data:null; let ver=r.found?r.ver:null; let stamp=r.found?r.stamp:null;
     // 2. merge
     const local=pickShared(state);
     const merged=pickShared(threeWay(base&&base.data, local, remote));
     // 3. save if the store does not already have exactly this
     if(!remote||!same(merged,remote)){
-      try{ ver=await remotePut(merged,remote,ver); }
+      try{ lastPutStamp=null; ver=await remotePut(merged,remote,ver); stamp=lastPutStamp; }
       catch(e){ if(e.conflict){ syncAgain=true; setSync("busy","Someone else just saved, retrying"); return; } throw e; }
     }
     // 4. adopt the merged copy locally and remember it as base
     const changed=!same(merged,local);
     Object.assign(state,merged); persist();
-    base={ ver, data:JSON.parse(JSON.stringify(merged)) };
+    base={ ver, stamp, data:JSON.parse(JSON.stringify(merged)) };
     try{ localStorage.setItem(BASE_KEY,JSON.stringify(base)); }catch(e){}
     setSync("ok","Synced");
     if(changed){ rerenderSafely(); if(reason!=="connect") toast("Updated from "+storeName()); }
