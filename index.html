@@ -445,7 +445,11 @@ const isOverridden = id => !!state.overrides[id];
 const allTasks = () => TASKS.filter(t=>!state.hidden.includes(t.id)).map(t=>state.overrides[t.id] ? {...state.overrides[t.id], id:t.id} : t).concat(state.custom);
 const findTask = id => allTasks().find(t=>t.id===id);
 const hiddenTasks = () => TASKS.filter(t=>state.hidden.includes(t.id));
-const roleOf = id => state.roles[id] || {};
+// default accountable / responsible people for the standard tasks, keyed by task id so they follow the
+// task even if it is later moved to another team. People set on the Tasks tab override these.
+const DEFAULT_ROLES={};
+TASKS.filter(t=>t.team==="ops").forEach(t=>{ DEFAULT_ROLES[t.id]={ a:"Michael", r:"Matt Henry" }; });
+const roleOf = id => state.roles[id] || DEFAULT_ROLES[id] || {};
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const whoText = t => { const r=roleOf(t.id); const bits=[]; if(r.a) bits.push("A: "+r.a); if(r.r) bits.push("R: "+r.r); return bits.join(" · "); };
 
@@ -532,7 +536,12 @@ function logEvent(ev,what,extra){
 }
 
 /* people list: every name used on a tick or as accountable / responsible, so it can be picked next time */
-const peopleSorted=()=>state.people.slice().sort((a,b)=>a.localeCompare(b));
+// remembered names plus the default accountable / responsible people, so they are always in the pick list
+const peopleSorted=()=>{
+  const out=state.people.slice();
+  for(const r of Object.values(DEFAULT_ROLES)) for(const n of [r.a,r.r]) if(n&&!out.some(p=>p.toLowerCase()===n.toLowerCase())) out.push(n);
+  return out.sort((a,b)=>a.localeCompare(b));
+};
 function rememberPerson(name){
   name=(name||"").trim(); if(!name) return;
   if(!state.people.some(p=>p.toLowerCase()===name.toLowerCase())){ state.people.push(name); save(); }
