@@ -451,6 +451,7 @@ const hiddenTasks = () => TASKS.filter(t=>state.hidden.includes(t.id));
 const DEFAULT_ROLES={};
 TASKS.filter(t=>t.team==="ops").forEach(t=>{ DEFAULT_ROLES[t.id]={ a:"Michael", r:"Matt Henry" }; });
 TASKS.filter(t=>t.team==="comp").forEach(t=>{ DEFAULT_ROLES[t.id]={ a:"Michael", r:"Diara" }; });
+TASKS.filter(t=>t.team==="cs").forEach(t=>{ DEFAULT_ROLES[t.id]={ a:"Diara", r:"" }; });
 const roleOf = id => state.roles[id] || DEFAULT_ROLES[id] || {};
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const whoText = t => { const r=roleOf(t.id); const bits=[]; if(r.a) bits.push("A: "+r.a); if(r.r) bits.push("R: "+r.r); return bits.join(" · "); };
