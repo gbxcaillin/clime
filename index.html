@@ -51,6 +51,9 @@ dialog{border:0;border-radius:10px;padding:0;max-width:520px;width:calc(100% - 3
 dialog::backdrop{background:rgba(28,36,48,.55)}
 dialog .form{border:0}
 dialog h3{margin:0 0 6px;font-family:var(--cond);font-size:18px;font-weight:600}
+.modes{display:flex;flex-direction:column;gap:4px;margin:6px 0 4px}
+.form .mode{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--ink);cursor:pointer}
+.form .mode input{width:auto;margin:0}
 .commits{display:flex;flex-direction:column;gap:6px}
 .commit{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:start}
 .commit .msg{font-weight:500}
@@ -209,22 +212,34 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
 
   <dialog id="syncDlg">
     <form class="form" id="syncForm" autocomplete="off">
-      <h3>Shared storage on GitHub</h3>
-      <p class="note" style="margin:0 0 8px">The tracker keeps one JSON file in a GitHub repository. Everyone who connects reads and writes that file, each change becomes a commit, and the page checks for new commits on a timer, when you return to the tab, and after your own changes.</p>
-      <label for="syRepo">Repository (owner/name)</label>
-      <input id="syRepo" placeholder="gbxcaillin/clime" required>
-      <label for="syBranch">Branch for the data file</label>
-      <input id="syBranch" value="tracker-data" required>
-      <label for="syPath">File path</label>
-      <input id="syPath" value="data/tracker.json" required>
-      <label for="syName">Your name (shown on commits)</label>
+      <h3>Shared storage</h3>
+      <p class="note" style="margin:0 0 8px">Everyone who connects reads and writes the same copy. The page checks for changes about once a minute while the tab is open, when you return to the tab, and after your own changes.</p>
+      <div class="modes">
+        <label class="mode"><input type="radio" name="syMode" value="sheet" checked> Google Sheet <span class="muted">(recommended, team password only)</span></label>
+        <label class="mode"><input type="radio" name="syMode" value="github"> GitHub repository <span class="muted">(needs a token per person)</span></label>
+      </div>
+      <div id="syModeSheet">
+        <label for="syUrl">Web app URL</label>
+        <input id="syUrl" placeholder="https://script.google.com/macros/s/.../exec">
+        <label for="syKey">Team password</label>
+        <input id="syKey" type="password" autocomplete="off">
+        <p class="note" style="margin:4px 0 0">The sheet owner sets these up once (see sheets/README.md in the project). The password is kept in this browser and checked by the sheet's script.</p>
+      </div>
+      <div id="syModeGithub" hidden>
+        <label for="syRepo">Repository (owner/name)</label>
+        <input id="syRepo" placeholder="gbxcaillin/clime">
+        <label for="syBranch">Branch for the data file</label>
+        <input id="syBranch" value="tracker-data">
+        <label for="syPath">File path</label>
+        <input id="syPath" value="data/tracker.json">
+        <label for="syToken">GitHub personal access token</label>
+        <input id="syToken" type="password" placeholder="github_pat_..." autocomplete="off">
+        <p class="note" style="margin:4px 0 0">A fine-grained token with access to only this repository and the Contents permission set to Read and write. It is stored in this browser only. Anyone with the token can commit to the repository, so treat it like a password.</p>
+      </div>
+      <label for="syName">Your name (recorded on changes)</label>
       <input id="syName" list="peopleList" maxlength="60" placeholder="Sam">
-      <label for="syToken">GitHub personal access token</label>
-      <input id="syToken" type="password" placeholder="github_pat_..." autocomplete="off">
-      <p class="note" style="margin:4px 0 0">A fine-grained token with access to only this repository and the Contents permission set to Read and write. It is stored in this browser only. Anyone with the token can commit to the repository, so treat it like a password.</p>
       <label for="syMin">Full sync every (minutes)</label>
       <input id="syMin" type="number" min="1" max="120" value="10">
-      <p class="note" style="margin:4px 0 0">While the tab is visible the page also asks GitHub about once a minute whether the file has a new commit, so other people's changes normally appear within a minute.</p>
       <div class="actions" style="display:flex;gap:14px;align-items:center;margin-top:14px">
         <button class="submit" type="submit" style="margin:0">Save and connect</button>
         <button class="cancel" type="button" id="syCancel" style="margin:0">Cancel</button>
@@ -300,9 +315,9 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
 
     <section class="view" id="view-activity">
       <div class="calhead">
-        <h3 style="min-width:0">Recent commits</h3>
+        <h3 style="min-width:0" id="activityTitle">Recent commits</h3>
         <button id="activityRefresh">Refresh</button>
-        <a id="activityLink" href="#" target="_blank" rel="noopener" style="font-size:13px;margin-left:auto" hidden>Open the data file on GitHub</a>
+        <a id="activityLink" href="#" target="_blank" rel="noopener" style="font-size:13px;margin-left:auto" hidden>Open the data on GitHub</a>
       </div>
       <div id="activity"></div>
     </section>
@@ -906,14 +921,16 @@ let toastT; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList
 const SYNC_KEY="clime-sync-v1", BASE_KEY="clime-sync-base-v1";
 const SHARED=["done","adhoc","custom","roles","overrides","hidden","people","log"];
 const SYNC_DEBOUNCE_MS=2500;
-let sync={ owner:"", repo:"", branch:"tracker-data", path:"data/tracker.json", token:"", name:"", minutes:10 };
-try{ Object.assign(sync, JSON.parse(localStorage.getItem(SYNC_KEY))||{}); }catch(e){}
+let sync={ mode:"sheet", url:"", key:"", owner:"", repo:"", branch:"tracker-data", path:"data/tracker.json", token:"", name:"", minutes:10 };
+try{ const saved=JSON.parse(localStorage.getItem(SYNC_KEY))||{}; if(!saved.mode) saved.mode=saved.token?"github":"sheet"; Object.assign(sync,saved); }catch(e){}
+let sheetInfo={ url:"", updatedAt:"", updatedBy:"", message:"" }; // what the sheet last told us about itself
 let base=null; // { sha, data } as last seen on GitHub
 try{ base=JSON.parse(localStorage.getItem(BASE_KEY)); }catch(e){}
 let syncState={ kind:"off", text:"Not connected", at:0 };
 let syncTimer=null, pollTimer=null, checkTimer=null, syncing=false, syncAgain=false, pendingRender=false, commits=null, etag=null;
 const CHECK_MS=60000; // quick conditional check for new commits (a 304 answer is free of GitHub rate limits)
-const syncOn=()=>!!(sync.owner&&sync.repo&&sync.token);
+const syncOn=()=>sync.mode==="sheet" ? !!(sync.url&&sync.key) : !!(sync.owner&&sync.repo&&sync.token);
+const storeName=()=>sync.mode==="sheet"?"the Google Sheet":"GitHub";
 // compare ignoring object key order, so a copy that came back from GitHub is not mistaken for a change
 const canon=v=>Array.isArray(v)?"["+v.map(canon).join(",")+"]":(v&&typeof v==="object")?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canon(v[k])).join(",")+"}":JSON.stringify(v===undefined?null:v);
 const same=(a,b)=>canon(a)===canon(b);
@@ -1032,41 +1049,78 @@ async function ensureBranch(){
   await gh("POST",repoPath()+"/git/refs",{ ref:"refs/heads/"+sync.branch, sha:head.json.object.sha });
 }
 
+/* transport: the same sync loop talks to either backend through these two calls */
+async function sheetCall(action,body){
+  const u=new URL(sync.url);
+  let res;
+  try{
+    if(body){ res=await fetch(u.toString(),{ method:"POST", body:JSON.stringify({ key:sync.key, ...body }), headers:{ "Content-Type":"text/plain;charset=utf-8" }, redirect:"follow" }); }
+    else { u.searchParams.set("action",action); u.searchParams.set("key",sync.key); u.searchParams.set("_",Date.now()); res=await fetch(u.toString(),{ redirect:"follow", cache:"no-store" }); }
+  }catch(e){ throw new Error("Could not reach the sheet's web app. Check the URL and your connection."); }
+  const text=await res.text();
+  let j=null; try{ j=JSON.parse(text); }catch(e){}
+  if(!j) throw new Error("The web app did not answer with data. Check it is deployed as a web app with access set to Anyone, and that the URL ends in /exec.");
+  if(j.ok===false&&!j.conflict) throw new Error(j.error||"The sheet's script reported an error");
+  if(j.sheetUrl) sheetInfo.url=j.sheetUrl;
+  if(j.updatedAt!==undefined) sheetInfo={ ...sheetInfo, updatedAt:j.updatedAt||"", updatedBy:j.updatedBy||"", message:j.message||"" };
+  return j;
+}
+// -> { notModified:true } | { found:false } | { found:true, ver, data }
+async function remoteGet(conditional){
+  if(sync.mode==="sheet"){
+    if(conditional&&base){ const m=await sheetCall("version"); if(Number(m.version||0)===Number(base.ver||0)) return { notModified:true }; }
+    const r=await sheetCall("state");
+    return { found:true, ver:Number(r.version||0), data:pickShared(fromStored(Object.assign({ done:{} },r.data||{}))) };
+  }
+  const cond=conditional&&etag ? { "If-None-Match":etag } : null;
+  try{
+    const r=await gh("GET",contentsUrl()+"?ref="+encodeURIComponent(sync.branch),null,cond);
+    if(r.status===304) return { notModified:true };
+    etag=r.etag||null;
+    return { found:true, ver:r.json.sha, data:pickShared(fromStored(JSON.parse(b64dec(r.json.content)))) };
+  }catch(e){ if(e.status!==404) throw e; etag=null; return { found:false }; }
+}
+// saves merged and returns the new version; throws { conflict:true } when someone else saved first
+async function remotePut(merged,remote,ver){
+  const message=`${sync.name||"Tracker"}: ${describeChanges(remote,merged)}`;
+  if(sync.mode==="sheet"){
+    const r=await sheetCall("put",{ action:"put", baseVersion:ver||0, updatedBy:sync.name||"", message, data:merged });
+    if(r.conflict){ const e=new Error("conflict"); e.conflict=true; throw e; }
+    return Number(r.version||0);
+  }
+  if(!remote) await ensureBranch();
+  const file={ version:1, updatedAt:new Date().toISOString(), updatedBy:sync.name||"", ...merged };
+  const body={ message, content:b64enc(JSON.stringify(file,null,1)), branch:sync.branch }; if(ver) body.sha=ver;
+  try{ const put=await gh("PUT",contentsUrl(),body); etag=null; return put.json.content.sha; }
+  catch(e){ if(e.status===409||e.status===422){ const c=new Error("conflict"); c.conflict=true; throw c; } throw e; }
+}
+
 async function runSync(reason){
   if(!syncOn()) return;
   if(syncing){ syncAgain=true; return; }
   syncing=true; setSync("busy","Syncing");
   try{
-    // 1. what is on GitHub right now. With nothing changed here since the last sync, ask conditionally:
-    //    a 304 means the file is unchanged too, so there is nothing to do.
-    let remote=null, sha=null;
+    // 1. what is stored right now. With nothing changed here since the last sync, only ask whether the
+    //    version moved (GitHub: ETag / 304, sheet: a cheap version call) and stop if it did not.
     const nothingLocal=!!(base&&base.data&&same(pickShared(state),base.data));
-    const cond=nothingLocal&&etag&&!syncTimer ? { "If-None-Match":etag } : null;
-    try{
-      const r=await gh("GET",contentsUrl()+"?ref="+encodeURIComponent(sync.branch),null,cond);
-      if(r.status===304){ setSync("ok","Synced"); return; }
-      etag=r.etag||null; sha=r.json.sha; remote=pickShared(fromStored(JSON.parse(b64dec(r.json.content))));
-    }
-    catch(e){ if(e.status!==404) throw e; etag=null; }
+    const r=await remoteGet(nothingLocal&&!syncTimer);
+    if(r.notModified){ setSync("ok","Synced"); return; }
+    const remote=r.found?r.data:null; let ver=r.found?r.ver:null;
     // 2. merge
     const local=pickShared(state);
     const merged=pickShared(threeWay(base&&base.data, local, remote));
-    // 3. commit if GitHub does not already have exactly this
+    // 3. save if the store does not already have exactly this
     if(!remote||!same(merged,remote)){
-      if(!remote) await ensureBranch();
-      const message=`${sync.name||"Tracker"}: ${describeChanges(remote,merged)}`;
-      const file={ version:1, updatedAt:new Date().toISOString(), updatedBy:sync.name||"", ...merged };
-      const body={ message, content:b64enc(JSON.stringify(file,null,1)), branch:sync.branch }; if(sha) body.sha=sha;
-      try{ const put=await gh("PUT",contentsUrl(),body); sha=put.json.content.sha; etag=null; }
-      catch(e){ if(e.status===409||e.status===422){ syncAgain=true; setSync("busy","Someone else just committed, retrying"); return; } throw e; }
+      try{ ver=await remotePut(merged,remote,ver); }
+      catch(e){ if(e.conflict){ syncAgain=true; setSync("busy","Someone else just saved, retrying"); return; } throw e; }
     }
     // 4. adopt the merged copy locally and remember it as base
     const changed=!same(merged,local);
     Object.assign(state,merged); persist();
-    base={ sha, data:JSON.parse(JSON.stringify(merged)) };
+    base={ ver, data:JSON.parse(JSON.stringify(merged)) };
     try{ localStorage.setItem(BASE_KEY,JSON.stringify(base)); }catch(e){}
     setSync("ok","Synced");
-    if(changed){ rerenderSafely(); if(reason!=="connect") toast("Updated from GitHub"); }
+    if(changed){ rerenderSafely(); if(reason!=="connect") toast("Updated from "+storeName()); }
     if($("#view-activity").classList.contains("on")||$("#view-admin").classList.contains("on")||commits===null) loadCommits();
   }catch(e){
     setSync("error",(e&&e.message)||"Sync failed");
@@ -1078,9 +1132,20 @@ async function runSync(reason){
 }
 
 async function loadCommits(){
-  const box=$("#activity"), link=$("#activityLink");
-  if(!syncOn()){ box.innerHTML=`<div class="empty">Connect shared storage (left rail, Set up) to see who changed what.</div>`; link.hidden=true; return; }
-  link.href=`https://github.com/${sync.owner}/${sync.repo}/blob/${sync.branch}/${sync.path}`; link.hidden=false;
+  const box=$("#activity"), link=$("#activityLink"), title=$("#activityTitle");
+  if(!syncOn()){ title.textContent="Recent changes"; box.innerHTML=`<div class="empty">Connect shared storage (left rail, Set up) to share changes with other people. Until then this shows changes made in this browser.</div>`+logList(); link.hidden=true; return; }
+  if(sync.mode==="sheet"){
+    // the sheet has no commits; show the shared changelog and where the data lives
+    title.textContent="Recent changes";
+    commits=null;
+    link.textContent="Open the Google Sheet"; link.href=sheetInfo.url||"#"; link.hidden=!sheetInfo.url;
+    const last=sheetInfo.updatedAt?`<p class="note" style="margin:0 0 12px">Last saved ${ago(sheetInfo.updatedAt)} by ${esc(sheetInfo.updatedBy||"unknown")}${sheetInfo.message?`: ${esc(sheetInfo.message.replace(/^[^:]+:\s*/,""))}`:""}.</p>`:"";
+    box.innerHTML=last+logList();
+    if($("#view-admin").classList.contains("on")&&typeof renderAdmin==="function") renderAdmin();
+    return;
+  }
+  title.textContent="Recent commits";
+  link.textContent="Open the data on GitHub"; link.href=`https://github.com/${sync.owner}/${sync.repo}/blob/${sync.branch}/${sync.path}`; link.hidden=false;
   if(commits===null) box.innerHTML=`<div class="empty">Loading commits</div>`;
   try{
     const r=await gh("GET",repoPath()+`/commits?path=${encodeURIComponent(sync.path)}&sha=${encodeURIComponent(sync.branch)}&per_page=40`);
@@ -1090,43 +1155,67 @@ async function loadCommits(){
   if($("#view-admin").classList.contains("on")&&typeof renderAdmin==="function") renderAdmin();
   box.innerHTML=`<div class="commits">`+commits.map(c=>`<div class="commit"><div class="msg">${esc(c.msg)}</div><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.sha.slice(0,7))}</a><div class="meta">${esc(c.who)}${c.when?` · ${ago(c.when)} · ${new Date(c.when).toLocaleString("en-AU")}`:""}</div></div>`).join("")+`</div>`;
 }
+// the last 40 changelog entries, newest first, as a simple list
+function logList(){
+  const rows=state.log.slice(-40).reverse();
+  if(!rows.length) return `<div class="empty">No changes recorded yet.</div>`;
+  const lbl=e=>(typeof EV_LABEL!=="undefined"&&EV_LABEL[e.ev])||e.ev;
+  return `<div class="commits">`+rows.map(e=>`<div class="commit"><div class="msg">${esc(lbl(e))}: ${esc(e.what||"")}${e.date?` <span class="muted">(${esc(e.date)})</span>`:""}</div><span></span><div class="meta">${esc(e.who||"unknown")}${e.t?` · ${ago(e.t)} · ${new Date(e.t).toLocaleString("en-AU")}`:""}</div></div>`).join("")+`</div>`;
+}
 $("#activityRefresh").onclick=()=>{ commits=null; loadCommits(); };
 
 /* settings dialog */
 const dlg=$("#syncDlg");
+const modeOf=()=>(document.querySelector('input[name=syMode]:checked')||{}).value||"sheet";
+function showModeFields(){ const m=modeOf(); $("#syModeSheet").hidden=m!=="sheet"; $("#syModeGithub").hidden=m!=="github"; }
+document.querySelectorAll('input[name=syMode]').forEach(r=>r.onchange=showModeFields);
 function openSyncDialog(){
   let guessRepo="";
   if(location.hostname.endsWith(".github.io")){ const seg=location.pathname.split("/").filter(Boolean)[0]; if(seg) guessRepo=location.hostname.split(".")[0]+"/"+seg; }
+  document.querySelector(`input[name=syMode][value=${sync.mode==="github"?"github":"sheet"}]`).checked=true;
+  $("#syUrl").value=sync.url||"";
+  $("#syKey").value=sync.key||"";
   $("#syRepo").value=sync.owner?`${sync.owner}/${sync.repo}`:guessRepo;
   $("#syBranch").value=sync.branch||"tracker-data";
   $("#syPath").value=sync.path||"data/tracker.json";
-  $("#syName").value=sync.name||"";
   $("#syToken").value=sync.token||"";
+  $("#syName").value=sync.name||"";
   $("#syMin").value=sync.minutes||10;
   $("#syDisconnect").hidden=!syncOn();
+  showModeFields();
   dlg.showModal();
 }
 $("#syncSetup").onclick=openSyncDialog;
 $("#syCancel").onclick=()=>dlg.close();
 $("#syncNow").onclick=()=>{ clearTimeout(syncTimer); syncTimer=null; runSync("manual"); };
 $("#syDisconnect").onclick=()=>{
-  if(!confirm("Disconnect from shared storage? Your data stays in this browser and on GitHub; the page just stops syncing.")) return;
-  sync={ ...sync, token:"" }; base=null;
+  if(!confirm(`Disconnect from shared storage? Your data stays in this browser and in ${storeName()}; the page just stops syncing.`)) return;
+  sync={ ...sync, token:"", key:"" }; base=null; etag=null;
   try{ localStorage.setItem(SYNC_KEY,JSON.stringify(sync)); localStorage.removeItem(BASE_KEY); }catch(e){}
   clearTimeout(syncTimer); syncTimer=null; commits=null; startPolling(); dlg.close(); renderSync(); toast("Disconnected");
 };
 $("#syncForm").onsubmit=e=>{
   e.preventDefault();
-  const m=$("#syRepo").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\.git$/,"").match(/^([\w.-]+)\/([\w.-]+)\/?$/);
-  if(!m){ toast("Repository must look like owner/name"); $("#syRepo").focus(); return; }
-  const token=$("#syToken").value.trim(); if(!token){ toast("A token is needed to connect"); $("#syToken").focus(); return; }
-  const changedTarget=sync.owner!==m[1]||sync.repo!==m[2]||sync.branch!==$("#syBranch").value.trim()||sync.path!==$("#syPath").value.trim();
-  sync={ owner:m[1], repo:m[2], branch:$("#syBranch").value.trim()||"tracker-data", path:$("#syPath").value.trim().replace(/^\/+/,"")||"data/tracker.json", token, name:$("#syName").value.trim(), minutes:Math.min(120,Math.max(1,Number($("#syMin").value)||10)) };
-  if(changedTarget){ base=null; try{ localStorage.removeItem(BASE_KEY); }catch(e){} }
+  const mode=modeOf();
+  const next={ ...sync, mode, name:$("#syName").value.trim(), minutes:Math.min(120,Math.max(1,Number($("#syMin").value)||10)) };
+  if(mode==="sheet"){
+    const url=$("#syUrl").value.trim();
+    if(!/^https:\/\/script\.google(?:usercontent)?\.com\/.+\/exec$/.test(url)&&!/^https?:\/\/\S+$/.test(url)){ toast("Paste the web app URL (it ends in /exec)"); $("#syUrl").focus(); return; }
+    const k=$("#syKey").value; if(!k){ toast("The team password is needed to connect"); $("#syKey").focus(); return; }
+    next.url=url; next.key=k;
+  } else {
+    const m=$("#syRepo").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\.git$/,"").match(/^([\w.-]+)\/([\w.-]+)\/?$/);
+    if(!m){ toast("Repository must look like owner/name"); $("#syRepo").focus(); return; }
+    const token=$("#syToken").value.trim(); if(!token){ toast("A token is needed to connect"); $("#syToken").focus(); return; }
+    next.owner=m[1]; next.repo=m[2]; next.branch=$("#syBranch").value.trim()||"tracker-data"; next.path=$("#syPath").value.trim().replace(/^\/+/,"")||"data/tracker.json"; next.token=token;
+  }
+  const target=x=>x.mode==="sheet"?`sheet|${x.url}`:`github|${x.owner}/${x.repo}|${x.branch}|${x.path}`;
+  if(target(next)!==target(sync)){ base=null; etag=null; try{ localStorage.removeItem(BASE_KEY); }catch(e){} }
+  sync=next;
   try{ localStorage.setItem(SYNC_KEY,JSON.stringify(sync)); }catch(e){}
   rememberPerson(sync.name);
   commits=null; dlg.close(); startPolling(); renderSync();
-  runSync("connect").then(()=>{ if(syncState.kind==="ok") toast("Connected to GitHub"); });
+  runSync("connect").then(()=>{ if(syncState.kind==="ok") toast("Connected to "+storeName()); });
 };
 
 function startPolling(){
