@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clime task tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --ink:#1c2430; --ink-2:#5a6676; --line:#d5dbe3; --line-2:#e6eaef;
+  --ops:#0f766e; --ops-bg:#dff5f1;
+  --comp:#b45309; --comp-bg:#fdecd2;
+  --cs:#6d28d9; --cs-bg:#ebe3fb;
+  --today:#1d4ed8; --done:#8a96a6;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --cond:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--today);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+@media(max-width:860px){.app{grid-template-columns:1fr}}
+
+/* left rail */
+.rail{background:var(--ink);color:#e8edf3;padding:28px 24px;display:flex;flex-direction:column;gap:28px}
+.brand{font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.02em;color:#aeb8c6}
+.daynum{font-family:var(--cond);font-weight:600;font-size:72px;line-height:.9;margin:6px 0 4px}
+.dayname{font-size:17px;font-weight:500}
+.daysub{color:#aeb8c6;font-size:14px}
+.datenav{display:flex;gap:6px;margin-top:12px}
+.datenav button{border:1px solid #3a4655;border-radius:6px;padding:6px 10px;font-size:13px;color:#e8edf3}
+.datenav button:hover{background:#2a3441}
+.datenav button.today{border-color:#6b8dd6}
+.rail h2{font-size:12px;font-weight:600;color:#aeb8c6;margin:0 0 10px;letter-spacing:.02em}
+.teams{display:flex;flex-direction:column;gap:6px}
+.teamtoggle{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;text-align:left;width:100%;border:1px solid transparent}
+.teamtoggle:hover{background:#2a3441}
+.teamtoggle .sw{width:12px;height:12px;border-radius:3px;flex:none}
+.teamtoggle.off{opacity:.4}
+.teamtoggle .cnt{margin-left:auto;font-size:12px;color:#aeb8c6}
+.progress{margin-top:auto}
+.bar{height:6px;background:#2a3441;border-radius:3px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:#6b8dd6;width:0;transition:width .25s}
+.railfoot{display:flex;gap:10px;flex-wrap:wrap}
+.railfoot button{font-size:12px;color:#aeb8c6;text-decoration:underline;text-underline-offset:3px;padding:0}
+.railfoot button:hover{color:#fff}
+
+/* main */
+.main{padding:28px 32px;max-width:1080px;width:100%}
+@media(max-width:860px){.main{padding:20px 16px}}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:24px}
+.tabs button{padding:10px 14px;font-weight:500;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink)}
+.view{display:none}.view.on{display:block}
+
+/* checklist */
+.group{margin-bottom:26px}
+.group h3{font-family:var(--cond);font-weight:600;font-size:14px;margin:0 0 8px;color:var(--ink-2);display:flex;align-items:baseline;gap:10px}
+.group h3 span{font-family:var(--sans);font-weight:400;font-size:13px}
+.tasks{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.task{display:grid;grid-template-columns:22px 6px 1fr auto;gap:12px;align-items:center;padding:11px 14px;border-top:1px solid var(--line-2)}
+.task:first-child{border-top:0}
+.task input{width:18px;height:18px;margin:0;accent-color:var(--ink)}
+.task .stripe{width:4px;height:22px;border-radius:2px}
+.task .name{font-weight:500}
+.task .desc{color:var(--ink-2);font-size:13px;margin-top:1px}
+.task .tag{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.task.done .name{color:var(--done);text-decoration:line-through}
+.task.done .desc{color:var(--done)}
+.t-ops .stripe{background:var(--ops)} .t-comp .stripe{background:var(--comp)} .t-cs .stripe{background:var(--cs)}
+.empty{padding:24px 16px;color:var(--ink-2);background:var(--panel);border:1px dashed var(--line);border-radius:8px}
+.note{color:var(--ink-2);font-size:13px;margin:-14px 0 20px}
+
+/* calendar */
+.calhead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.calhead h3{margin:0;font-family:var(--cond);font-size:22px;font-weight:600;min-width:200px}
+.calhead button{border:1px solid var(--line);border-radius:6px;padding:5px 10px;background:var(--panel);font-size:13px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cal .wd{background:var(--bg);padding:6px 8px;font-size:12px;color:var(--ink-2);font-weight:500}
+.cell{background:var(--panel);min-height:96px;padding:6px 8px;text-align:left;display:flex;flex-direction:column;gap:3px;border:0}
+.cell.pad{background:#f6f7f9}
+.cell.wknd{background:#f9fafb}
+.cell:hover{background:#f3f6fb}
+.cell .d{font-size:13px;font-weight:500;color:var(--ink-2);display:flex;justify-content:space-between}
+.cell.istoday .d b{background:var(--today);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-grid;place-items:center;font-weight:600}
+.cell.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.chip{font-size:11px;line-height:1.25;padding:2px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.chip.ops{background:var(--ops-bg);color:var(--ops)} .chip.comp{background:var(--comp-bg);color:var(--comp)} .chip.cs{background:var(--cs-bg);color:var(--cs)}
+.chip.done{opacity:.45;text-decoration:line-through}
+.cell .more{font-size:11px;color:var(--ink-2)}
+@media(max-width:860px){.cell{min-height:64px;padding:4px}.chip{display:none}.cell .dots{display:flex;gap:3px}.cell .dots i{width:6px;height:6px;border-radius:50%}}
+.dots{display:none}
+.dots .ops{background:var(--ops)}.dots .comp{background:var(--comp)}.dots .cs{background:var(--cs)}
+.legend{display:flex;gap:16px;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+/* adhoc */
+.adhoc{display:grid;grid-template-columns:1fr 1.3fr;gap:24px}
+@media(max-width:860px){.adhoc{grid-template-columns:1fr}}
+.form{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}
+.form label{display:block;font-size:13px;color:var(--ink-2);margin:10px 0 4px}
+.form label:first-child{margin-top:0}
+.form select,.form input,.form textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink)}
+.form textarea{min-height:70px;resize:vertical}
+.form .submit{margin-top:14px;background:var(--ink);color:#fff;border-radius:6px;padding:9px 14px;font-weight:500}
+.log{display:flex;flex-direction:column;gap:8px}
+.entry{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:grid;grid-template-columns:6px 1fr auto;gap:12px}
+.entry .stripe{width:4px;border-radius:2px;align-self:stretch}
+.entry .when{font-size:12px;color:var(--ink-2)}
+.entry .what{font-weight:500}
+.entry .memo{font-size:13px;color:var(--ink-2);white-space:pre-wrap}
+.entry .x{color:var(--ink-2);font-size:13px;align-self:start}
+.entry .x:hover{color:#b91c1c}
+.entry.closed .what{color:var(--done);text-decoration:line-through}
+.entry .close{font-size:12px;color:var(--today);padding:0;margin-top:4px}
+
+/* schedule reference */
+table.ref{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:14px}
+table.ref th,table.ref td{text-align:left;padding:9px 12px;border-top:1px solid var(--line-2);vertical-align:top}
+table.ref th{background:var(--bg);font-weight:600;border-top:0}
+table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
+.tblwrap{overflow-x:auto}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div>
+      <div class="brand">Clime task tracker</div>
+      <div class="daynum" id="dayNum">17</div>
+      <div class="dayname" id="dayName">Thursday</div>
+      <div class="daysub" id="daySub">September 2026</div>
+      <div class="datenav">
+        <button id="prevDay" aria-label="Previous day">‹</button>
+        <button id="todayBtn" class="today">Today</button>
+        <button id="nextDay" aria-label="Next day">›</button>
+      </div>
+    </div>
+    <div>
+      <h2>Teams</h2>
+      <div class="teams" id="teams"></div>
+    </div>
+    <div class="progress">
+      <h2>Done today</h2>
+      <div id="progText">0 of 0</div>
+      <div class="bar"><i id="progBar"></i></div>
+    </div>
+    <div class="railfoot">
+      <button id="exportBtn">Export data</button>
+      <button id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-view="day">Day</button>
+      <button role="tab" aria-selected="false" data-view="cal">Month</button>
+      <button role="tab" aria-selected="false" data-view="adhoc">Adhoc log</button>
+      <button role="tab" aria-selected="false" data-view="ref">Schedule</button>
+    </div>
+
+    <section class="view on" id="view-day"></section>
+
+    <section class="view" id="view-cal">
+      <div class="calhead">
+        <button id="prevMonth" aria-label="Previous month">‹</button>
+        <h3 id="calTitle">September 2026</h3>
+        <button id="nextMonth" aria-label="Next month">›</button>
+        <button id="thisMonth">This month</button>
+      </div>
+      <div class="cal" id="cal"></div>
+      <div class="legend"><span><i style="background:var(--ops)"></i>Ops</span><span><i style="background:var(--comp)"></i>Compliance</span><span><i style="background:var(--cs)"></i>Client Services</span><span style="margin-left:auto">Daily tasks are not shown on the grid. Click a day to open it.</span></div>
+    </section>
+
+    <section class="view" id="view-adhoc">
+      <div class="adhoc">
+        <div class="form">
+          <label for="ahTask">Item</label>
+          <select id="ahTask"></select>
+          <label for="ahDate">Date raised</label>
+          <input type="date" id="ahDate">
+          <label for="ahNote">Note</label>
+          <textarea id="ahNote" placeholder="Reference, client, what happened"></textarea>
+          <button class="submit" id="ahAdd">Add to log</button>
+        </div>
+        <div>
+          <div class="log" id="ahLog"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-ref">
+      <div class="tblwrap"><table class="ref" id="refTable"></table></div>
+      <p class="note" style="margin-top:14px">Date rules: the 1st and 15th move to the next business day if they land on a weekend. The 30th uses the last business day of the month when the 30th is a weekend or the month has no 30th. Fortnightly items are shown on the 1st and 15th. Daily items appear on weekdays only.</p>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- task definitions ---------- */
+const TEAMS = {
+  ops:  {name:"Ops",             cls:"t-ops",  chip:"ops"},
+  comp: {name:"Compliance",      cls:"t-comp", chip:"comp"},
+  cs:   {name:"Client Services", cls:"t-cs",   chip:"cs"}
+};
+// freq: daily | weekly (dow 1=Mon..5=Fri) | fortnightly | monthly (dom) | adhoc
+const TASKS = [
+  {id:"cash-orders",   team:"ops",  freq:"daily", name:"Cash Orders"},
+  {id:"fund-orders",   team:"ops",  freq:"daily", name:"Fund Orders"},
+  {id:"trade-rec",     team:"ops",  freq:"daily", name:"Trade Reconciliation"},
+  {id:"neg-hold",      team:"ops",  freq:"daily", name:"Negative Holdings Reconciliation"},
+  {id:"five-pct",      team:"ops",  freq:"daily", name:"5% Holding Rules Reconciliation"},
+  {id:"switzer-file",  team:"ops",  freq:"daily", name:"Switzer Trade File"},
+  {id:"comp-inbox",    team:"comp", freq:"daily", name:"Email Inbox", desc:"compliance"},
+  {id:"registers",     team:"comp", freq:"daily", name:"Registers", desc:"complaints, breaches, incidents, event, conflicts, marketing"},
+  {id:"phones",        team:"cs",   freq:"daily", name:"Phone Calls"},
+  {id:"cs-inbox",      team:"cs",   freq:"daily", name:"Email Inbox", desc:"info, investor services"},
+  {id:"retail",        team:"cs",   freq:"daily", name:"Overflow Retail Enquiries"},
+
+  {id:"omt",           team:"cs",   freq:"weekly", dow:1, name:"Off Market Transfers", desc:"Centuria"},
+  {id:"ima-sweeps",    team:"ops",  freq:"weekly", dow:5, name:"IMA Cash Sweeps"},
+  {id:"switzer-rec",   team:"ops",  freq:"weekly", dow:5, name:"Switzer Reconciliation"},
+  {id:"clic-cam",      team:"ops",  freq:"weekly", dow:5, name:"CLIC / CAM Reconciliation"},
+
+  {id:"contrib-rec",   team:"ops",  freq:"fortnightly", name:"Contributory Scheme Reconciliation"},
+  {id:"instr-audit",   team:"comp", freq:"fortnightly", name:"Instructions Audit"},
+
+  {id:"file-audit",    team:"comp", freq:"monthly", dom:1,  name:"Random File Audit"},
+  {id:"sdf-nav",       team:"ops",  freq:"monthly", dom:15, name:"Strat Debt Fund NAV start"},
+  {id:"info-share",    team:"comp", freq:"monthly", dom:15, name:"Info Sharing Audit", desc:"between CIW and CPW"},
+  {id:"arcus-nav",     team:"ops",  freq:"monthly", dom:30, name:"Arcus NAV start"},
+
+  {id:"unlisted",      team:"ops",  freq:"adhoc", name:"Unlisted Transactions"},
+  {id:"contrib-redem", team:"ops",  freq:"adhoc", name:"Contributory Scheme Redemptions / Freemasons Transactions"},
+  {id:"idr",           team:"comp", freq:"adhoc", name:"IDR"},
+  {id:"edr",           team:"comp", freq:"adhoc", name:"EDR"},
+  {id:"breaches",      team:"comp", freq:"adhoc", name:"Breaches"}
+];
+
+/* ---------- date helpers ---------- */
+const pad = n => String(n).padStart(2,"0");
+const key = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fromKey = k => { const [y,m,d]=k.split("-").map(Number); return new Date(y,m-1,d); };
+const isWeekend = d => d.getDay()===0 || d.getDay()===6;
+const nextBiz = d => { const x=new Date(d); while(isWeekend(x)) x.setDate(x.getDate()+1); return x; };
+const lastBizOfMonth = (y,m) => { const x=new Date(y,m+1,0); while(isWeekend(x)) x.setDate(x.getDate()-1); return x; };
+const daysInMonth = (y,m) => new Date(y,m+1,0).getDate();
+
+// effective dates of the 1st/15th/30th anchors within a given month
+function anchorDate(y,m,dom){
+  if(dom===30){
+    if(daysInMonth(y,m)>=30 && !isWeekend(new Date(y,m,30))) return new Date(y,m,30);
+    return lastBizOfMonth(y,m);
+  }
+  return nextBiz(new Date(y,m,dom));
+}
+// map of dateKey -> task list for a month (scheduled, non-daily)
+function scheduledForMonth(y,m){
+  const map={};
+  const add=(d,t)=>{ const k=key(d); (map[k]=map[k]||[]).push(t); };
+  // anchors may spill into next month for the 1st on weekend? No: nextBiz of the 1st stays inside the month. 15th -> max 17th. Fine.
+  for(const t of TASKS){
+    if(t.freq==="monthly") add(anchorDate(y,m,t.dom),t);
+    if(t.freq==="fortnightly"){ add(anchorDate(y,m,1),t); add(anchorDate(y,m,15),t); }
+  }
+  for(let d=1; d<=daysInMonth(y,m); d++){
+    const dt=new Date(y,m,d);
+    for(const t of TASKS) if(t.freq==="weekly" && t.dow===dt.getDay()) add(dt,t);
+  }
+  return map;
+}
+function tasksForDay(d){
+  const sched = scheduledForMonth(d.getFullYear(),d.getMonth())[key(d)]||[];
+  const daily = isWeekend(d) ? [] : TASKS.filter(t=>t.freq==="daily");
+  return {daily, sched};
+}
+
+/* ---------- state ---------- */
+const LS="clime-tracker-v1";
+let state = load();
+function load(){
+  try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.done) return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}}; }catch(e){}
+  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}};
+}
+function save(){ try{ localStorage.setItem(LS,JSON.stringify(state)); }catch(e){ toast("Could not save. Check browser storage settings."); } }
+const doneKey=(k,id)=>`${k}|${id}`;
+const isDone=(k,id)=>!!state.done[doneKey(k,id)];
+function setDone(k,id,v){ if(v) state.done[doneKey(k,id)]=1; else delete state.done[doneKey(k,id)]; save(); }
+
+const today = new Date(); today.setHours(0,0,0,0);
+let selected = new Date(today);
+let calMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+/* ---------- rendering ---------- */
+const $=s=>document.querySelector(s);
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const fmtLong = d => `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+const freqLabel = t => t.freq==="weekly" ? `Every ${DAYS[t.dow]}` : t.freq==="monthly" ? (t.dom===1?"1st of month":t.dom===15?"15th of month":"30th of month") : t.freq==="fortnightly" ? "1st and 15th" : t.freq==="adhoc" ? "As needed" : "Daily";
+
+function renderRail(){
+  $("#dayNum").textContent=selected.getDate();
+  $("#dayName").textContent=DAYS[selected.getDay()] + (key(selected)===key(today)?" (today)":"");
+  $("#daySub").textContent=`${MONTHS[selected.getMonth()]} ${selected.getFullYear()}`;
+  const teams=$("#teams"); teams.innerHTML="";
+  const {daily,sched}=tasksForDay(selected);
+  for(const [id,t] of Object.entries(TEAMS)){
+    const list=[...daily,...sched].filter(x=>x.team===id);
+    const doneN=list.filter(x=>isDone(key(selected),x.id)).length;
+    const b=document.createElement("button");
+    b.className="teamtoggle"+(state.teams[id]?"":" off");
+    b.setAttribute("aria-pressed",state.teams[id]);
+    b.innerHTML=`<span class="sw" style="background:var(--${TEAMS[id].chip})"></span><span>${t.name}</span><span class="cnt">${doneN}/${list.length}</span>`;
+    b.onclick=()=>{ state.teams[id]=!state.teams[id]; save(); renderAll(); };
+    teams.appendChild(b);
+  }
+  const vis=[...daily,...sched].filter(x=>state.teams[x.team]);
+  const dn=vis.filter(x=>isDone(key(selected),x.id)).length;
+  $("#progText").textContent=`${dn} of ${vis.length}`;
+  $("#progBar").style.width=(vis.length?dn/vis.length*100:0)+"%";
+}
+
+function taskRow(t,k){
+  const done=isDone(k,t.id);
+  const row=document.createElement("label");
+  row.className=`task ${TEAMS[t.team].cls}${done?" done":""}`;
+  row.innerHTML=`<input type="checkbox" ${done?"checked":""}><span class="stripe"></span><span><div class="name">${t.name}</div>${t.desc?`<div class="desc">${t.desc}</div>`:""}</span><span class="tag">${TEAMS[t.team].name}${t.freq!=="daily"?" · "+freqLabel(t):""}</span>`;
+  row.querySelector("input").onchange=e=>{ setDone(k,t.id,e.target.checked); row.classList.toggle("done",e.target.checked); renderRail(); if($("#view-cal").classList.contains("on")) renderCal(); };
+  return row;
+}
+
+function renderDay(){
+  const v=$("#view-day"); v.innerHTML="";
+  const k=key(selected);
+  const {daily,sched}=tasksForDay(selected);
+  const f=list=>list.filter(t=>state.teams[t.team]);
+
+  // outstanding scheduled items from earlier days in the last 31 days, not done
+  const outstanding=[];
+  for(let i=1;i<=31;i++){
+    const d=new Date(selected); d.setDate(d.getDate()-i);
+    if(d>today) continue;
+    const s=(scheduledForMonth(d.getFullYear(),d.getMonth())[key(d)]||[]);
+    for(const t of s) if(!isDone(key(d),t.id) && state.teams[t.team]) outstanding.push({t,d});
+  }
+
+  const groups=[
+    ["Scheduled for this day", f(sched), k],
+    ["Daily", f(daily), k]
+  ];
+  if(!daily.length && !sched.length){
+    v.innerHTML=`<div class="empty">Nothing scheduled. ${isWeekend(selected)?"Weekend.":""}</div>`;
+  }
+  for(const [title,list,kk] of groups){
+    if(!list.length) continue;
+    const g=document.createElement("div"); g.className="group";
+    const dn=list.filter(t=>isDone(kk,t.id)).length;
+    g.innerHTML=`<h3>${title}<span>${dn}/${list.length}</span></h3>`;
+    const box=document.createElement("div"); box.className="tasks";
+    list.forEach(t=>box.appendChild(taskRow(t,kk)));
+    g.appendChild(box); v.appendChild(g);
+  }
+  if(outstanding.length && selected<=today){
+    const g=document.createElement("div"); g.className="group";
+    g.innerHTML=`<h3>Outstanding from earlier<span>${outstanding.length} not ticked</span></h3>`;
+    const box=document.createElement("div"); box.className="tasks";
+    outstanding.sort((a,b)=>b.d-a.d).forEach(({t,d})=>{
+      const row=taskRow(t,key(d));
+      row.querySelector(".tag").textContent=`${TEAMS[t.team].name} · due ${DAYS[d.getDay()].slice(0,3)} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
+      box.appendChild(row);
+    });
+    g.appendChild(box); v.appendChild(g);
+  }
+}
+
+function renderCal(){
+  const y=calMonth.getFullYear(), m=calMonth.getMonth();
+  $("#calTitle").textContent=`${MONTHS[m]} ${y}`;
+  const cal=$("#cal"); cal.innerHTML="";
+  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(w=>{ const e=document.createElement("div"); e.className="wd"; e.textContent=w; cal.appendChild(e); });
+  const map=scheduledForMonth(y,m);
+  const first=new Date(y,m,1); const lead=(first.getDay()+6)%7;
+  for(let i=0;i<lead;i++){ const e=document.createElement("div"); e.className="cell pad"; cal.appendChild(e); }
+  for(let d=1; d<=daysInMonth(y,m); d++){
+    const dt=new Date(y,m,d), k=key(dt);
+    const list=(map[k]||[]).filter(t=>state.teams[t.team]);
+    const c=document.createElement("button");
+    c.className="cell"+(isWeekend(dt)?" wknd":"")+(k===key(today)?" istoday":"")+(k===key(selected)?" sel":"");
+    c.innerHTML=`<span class="d"><b>${d}</b></span>`;
+    const show=list.slice(0,3);
+    show.forEach(t=>{ const ch=document.createElement("span"); ch.className=`chip ${TEAMS[t.team].chip}${isDone(k,t.id)?" done":""}`; ch.textContent=t.name; ch.title=t.name; c.appendChild(ch); });
+    if(list.length>3){ const mo=document.createElement("span"); mo.className="more"; mo.textContent=`+${list.length-3} more`; c.appendChild(mo); }
+    if(list.length){ const dots=document.createElement("span"); dots.className="dots"; [...new Set(list.map(t=>t.team))].forEach(tm=>{ const i=document.createElement("i"); i.className=TEAMS[tm].chip; dots.appendChild(i); }); c.appendChild(dots); }
+    c.onclick=()=>{ selected=dt; switchView("day"); renderAll(); };
+    cal.appendChild(c);
+  }
+}
+
+function renderAdhoc(){
+  const sel=$("#ahTask");
+  if(!sel.options.length){
+    TASKS.filter(t=>t.freq==="adhoc").forEach(t=>{ const o=document.createElement("option"); o.value=t.id; o.textContent=`${t.name} (${TEAMS[t.team].name})`; sel.appendChild(o); });
+    $("#ahDate").value=key(today);
+  }
+  const log=$("#ahLog"); log.innerHTML="";
+  if(!state.adhoc.length){ log.innerHTML=`<div class="empty">No adhoc items logged yet. Add one on the left when an IDR, EDR, breach or unlisted transaction comes in.</div>`; return; }
+  [...state.adhoc].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts).forEach(e=>{
+    const t=TASKS.find(x=>x.id===e.task); if(!t) return;
+    const d=fromKey(e.date);
+    const el=document.createElement("div"); el.className="entry"+(e.closed?" closed":"");
+    el.innerHTML=`<span class="stripe" style="background:var(--${TEAMS[t.team].chip})"></span><span><div class="when">${fmtLong(d)}${e.closed?` · closed ${fmtLong(fromKey(e.closed))}`:""}</div><div class="what">${t.name}</div>${e.note?`<div class="memo"></div>`:""}${e.closed?"":`<button class="close">Mark closed</button>`}</span><button class="x" aria-label="Delete entry">Delete</button>`;
+    if(e.note) el.querySelector(".memo").textContent=e.note;
+    const cb=el.querySelector(".close"); if(cb) cb.onclick=()=>{ e.closed=key(today); save(); renderAdhoc(); };
+    el.querySelector(".x").onclick=()=>{ if(confirm("Delete this log entry?")){ state.adhoc=state.adhoc.filter(x=>x.ts!==e.ts); save(); renderAdhoc(); } };
+    log.appendChild(el);
+  });
+}
+$("#ahAdd").onclick=()=>{
+  const date=$("#ahDate").value; if(!date){ toast("Pick a date."); return; }
+  state.adhoc.push({ts:Date.now(), task:$("#ahTask").value, date, note:$("#ahNote").value.trim(), closed:null});
+  save(); $("#ahNote").value=""; renderAdhoc(); toast("Added to log");
+};
+
+function renderRef(){
+  const tb=$("#refTable"); if(tb.rows.length) return;
+  const order=["daily","weekly","fortnightly","monthly","adhoc"];
+  let html=`<tr><th>When</th><th>Ops</th><th>Compliance</th><th>Client Services</th></tr>`;
+  const rows=[];
+  for(const fr of order){
+    const keys=[...new Set(TASKS.filter(t=>t.freq===fr).map(freqLabel))];
+    for(const lab of keys){
+      const cells=["ops","comp","cs"].map(tm=>TASKS.filter(t=>t.freq===fr&&freqLabel(t)===lab&&t.team===tm).map(t=>t.name+(t.desc?` <span style="color:var(--ink-2)">(${t.desc})</span>`:"")).join("<br>"));
+      rows.push(`<tr><td>${lab}</td><td>${cells[0]}</td><td>${cells[1]}</td><td>${cells[2]}</td></tr>`);
+    }
+  }
+  tb.innerHTML=html+rows.join("");
+}
+
+function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); }
+
+/* ---------- navigation ---------- */
+function switchView(v){
+  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id==="view-"+v));
+  if(v==="cal"){ calMonth=new Date(selected.getFullYear(),selected.getMonth(),1); renderCal(); }
+}
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>switchView(b.dataset.view));
+$("#prevDay").onclick=()=>{ selected.setDate(selected.getDate()-1); selected=new Date(selected); renderAll(); };
+$("#nextDay").onclick=()=>{ selected.setDate(selected.getDate()+1); selected=new Date(selected); renderAll(); };
+$("#todayBtn").onclick=()=>{ selected=new Date(today); switchView("day"); renderAll(); };
+$("#prevMonth").onclick=()=>{ calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()-1,1); renderCal(); };
+$("#nextMonth").onclick=()=>{ calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+1,1); renderCal(); };
+$("#thisMonth").onclick=()=>{ calMonth=new Date(today.getFullYear(),today.getMonth(),1); renderCal(); };
+
+/* ---------- export / import ---------- */
+$("#exportBtn").onclick=()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`clime-tracker-${key(today)}.json`; a.click(); URL.revokeObjectURL(a.href);
+};
+$("#importBtn").onclick=()=>$("#importFile").click();
+$("#importFile").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.done) throw 0; state={done:s.done, adhoc:s.adhoc||[], teams:s.teams||state.teams}; save(); renderAll(); toast("Data imported"); }catch(_){ toast("That file is not a tracker export."); } };
+  r.readAsText(f); e.target.value="";
+};
+
+let toastT; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2200); }
+
+renderAll();
+</script>
+</body>
+</html>
