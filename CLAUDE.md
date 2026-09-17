@@ -3,11 +3,11 @@
 Single-file static web app (`index.html`) that tracks recurring Ops, Compliance and Client Services tasks for Clime. Hosted on GitHub Pages. No build step, no dependencies beyond Google Fonts (IBM Plex Sans), which has a system fallback.
 
 ## What it does
-- **Day tab**: checklist for the selected day. Shows scheduled (weekly / fortnightly / monthly) items, then daily items, then an "Outstanding from earlier" group listing unticked scheduled items from the previous 31 days.
+- **Day tab**: checklist for the selected day. Shows scheduled (weekly / fortnightly / monthly) items, then daily items. Ticking a task prompts for the person's name ("Done by"), picked from the remembered people list or typed; the name can be changed later. An "Outstanding from earlier" group (unticked scheduled items from the previous 31 days) exists in code but is switched off via `SHOW_OUTSTANDING=false` at the user's request.
 - **Month tab**: calendar grid showing scheduled items as chips (daily items deliberately not shown). Click a day to open it.
 - **Adhoc log tab**: log occurrences of adhoc items (IDR, EDR, Breaches, Unlisted Transactions, Contributory Scheme Redemptions) with date and note; mark closed; delete.
 - **Schedule tab**: reference table of every task by frequency and team, with accountable / responsible shown under each task when set.
-- **Tasks tab**: users add their own tasks (name, description, team, frequency, day of week or day of month) and set an **Accountable** and **Responsible** person on any task. Every task, built-in or added, can be edited. Added tasks can be deleted; built-in tasks are "removed" (hidden) instead and can be restored, and edited built-in tasks can be reset to their standard definition. Added tasks flow into the Day, Month, Adhoc and Schedule views like built-in ones.
+- **Tasks tab**: users add their own tasks (name, description, team, frequency, day of week or day of month) and set an **Accountable** and **Responsible** person on any task. Every task, built-in or added, can be edited. Added tasks can be deleted; built-in tasks are "removed" (hidden) instead and can be restored, and edited built-in tasks can be reset to their standard definition. Added tasks flow into the Day, Month, Adhoc and Schedule views like built-in ones. A **People** list at the bottom shows every remembered name (from ticks and accountable / responsible) with the option to remove one from the pick list.
 - Left rail: selected date with prev/next/today, team filter toggles (persisted), progress for the day, export/import of state as JSON.
 
 ## Source of truth
@@ -24,16 +24,17 @@ Single-file static web app (`index.html`) that tracks recurring Ops, Compliance 
 `localStorage` under key `clime-tracker-v1`:
 ```json
 {
-  "done": { "YYYY-MM-DD|taskId": 1 },
+  "done": { "YYYY-MM-DD|taskId": 1 | "Name of who did it" },
   "adhoc": [ { "ts", "task", "date", "note", "closed" } ],
   "teams": { "ops": true, "comp": true, "cs": true },
   "custom": [ { "id": "custom-…", "team", "freq", "dow"?, "dom"?, "name", "desc"? } ],
   "roles": { "taskId": { "a": "Accountable person", "r": "Responsible person" } },
   "overrides": { "builtinId": { "id", "team", "freq", "dow"?, "dom"?, "name", "desc"? } },
-  "hidden": [ "builtinId" ]
+  "hidden": [ "builtinId" ],
+  "people": [ "Name" ]
 }
 ```
-`custom`, `roles`, `overrides` and `hidden` are optional so older exports still import. `fromStored()` normalises any stored or imported object. Deleting an added task also removes its ticks, roles and adhoc log entries; removing a built-in task keeps them so a restore is lossless.
+A `done` value of `1` means ticked with no name yet (older data); a string is the name of the person who ticked it. `isDone()` treats both as done, `doneBy()` returns the name or "". `rememberPerson()` adds a name to `people` (case-insensitive dedupe). `custom`, `roles`, `overrides`, `hidden` and `people` are optional so older exports still import. `fromStored()` normalises any stored or imported object. Deleting an added task also removes its ticks, roles and adhoc log entries; removing a built-in task keeps them so a restore is lossless.
 State is per browser. Export/import exists for handover. If shared team state is needed, a backend (or a hosted artifact with a DB) would replace this.
 
 ## Style notes
@@ -46,6 +47,6 @@ Push to a GitHub repo, enable Pages from the root of `main`. `index.html` is the
 
 ## Ideas not yet built
 - Public holidays (VIC)
-- Initials on tick (who actually did it on the day; accountable / responsible per task now exists)
+- Bring back "Outstanding from earlier" (flip `SHOW_OUTSTANDING`) if wanted later
 - Shared state via a small backend
 - Notes per task per day

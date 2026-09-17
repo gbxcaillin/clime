@@ -63,12 +63,22 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .tasks{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .task{display:grid;grid-template-columns:22px 6px 1fr auto;gap:12px;align-items:center;padding:11px 14px;border-top:1px solid var(--line-2)}
 .task:first-child{border-top:0}
-.task input{width:18px;height:18px;margin:0;accent-color:var(--ink)}
+.task input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--ink)}
 .task .stripe{width:4px;height:22px;border-radius:2px}
 .task .name{font-weight:500}
 .task .desc{color:var(--ink-2);font-size:13px;margin-top:1px}
 .task .tag{font-size:12px;color:var(--ink-2);white-space:nowrap}
 .task .who{color:var(--ink-2);font-size:12px;margin-top:2px}
+.task .by{font-size:12px;color:var(--ink-2);margin-top:3px}
+.task .by:empty{display:none}
+.task .by b{color:var(--ink);font-weight:500}
+.lnk{color:var(--today);font-size:12px;padding:0;text-decoration:underline;text-underline-offset:3px}
+.byselect,.byinput{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;background:#fff;color:var(--ink);max-width:220px}
+.people{display:flex;flex-wrap:wrap;gap:8px}
+.person{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 10px;font-size:13px}
+.person button{color:var(--ink-2);font-size:14px;padding:0 3px;line-height:1}
+.person button:hover{color:#b91c1c}
+.muted{color:var(--ink-2);font-size:13px}
 .task.done .name{color:var(--done);text-decoration:line-through}
 .task.done .desc,.task.done .who{color:var(--done)}
 .t-ops .stripe{background:var(--ops)} .t-comp .stripe{background:var(--comp)} .t-cs .stripe{background:var(--cs)}
@@ -270,11 +280,11 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
         </div>
         <div>
           <label for="tfAcc">Accountable</label>
-          <input id="tfAcc" maxlength="80" placeholder="Who signs it off">
+          <input id="tfAcc" maxlength="80" placeholder="Who signs it off" list="peopleList">
         </div>
         <div>
           <label for="tfResp">Responsible</label>
-          <input id="tfResp" maxlength="80" placeholder="Who does the work">
+          <input id="tfResp" maxlength="80" placeholder="Who does the work" list="peopleList">
         </div>
         <div class="actions">
           <button class="submit" type="submit" id="tfSave">Add task</button>
@@ -284,6 +294,12 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
       <p class="note" style="margin:0 0 14px">Every task can be edited or removed, and any task can be given an accountable and responsible person. Changes are saved in this browser and included in Export data. Edited standard tasks can be reset, and removed ones restored, from the list below.</p>
       <div class="tblwrap"><table class="ref" id="taskTable"></table></div>
       <div id="hiddenTasks" class="note" style="margin-top:14px"></div>
+      <div class="group" style="margin-top:28px">
+        <h3>People</h3>
+        <p class="note" style="margin:0 0 6px">Names remembered from ticks and from accountable / responsible, offered as a pick list next time. Removing a name here only clears it from the pick list.</p>
+        <div class="people" id="peopleBox"></div>
+      </div>
+      <datalist id="peopleList"></datalist>
     </section>
   </main>
 </div>
@@ -394,16 +410,68 @@ function fromStored(s){
   const overrides={};
   if(s.overrides&&typeof s.overrides==="object") for(const [id,t] of Object.entries(s.overrides)) if(TASKS.some(x=>x.id===id)&&validDef(t)) overrides[id]={...t, id};
   const hidden=Array.isArray(s.hidden) ? s.hidden.filter(id=>TASKS.some(x=>x.id===id)) : [];
-  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles, overrides, hidden};
+  const people=[];
+  if(Array.isArray(s.people)) for(const p of s.people){ const n=String(p||"").trim(); if(n && !people.some(x=>x.toLowerCase()===n.toLowerCase())) people.push(n); }
+  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles, overrides, hidden, people};
 }
 function load(){
   try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.done) return fromStored(s); }catch(e){}
-  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}, overrides:{}, hidden:[]};
+  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}, overrides:{}, hidden:[], people:[]};
 }
 function save(){ try{ localStorage.setItem(LS,JSON.stringify(state)); }catch(e){ toast("Could not save. Check browser storage settings."); } }
 const doneKey=(k,id)=>`${k}|${id}`;
 const isDone=(k,id)=>!!state.done[doneKey(k,id)];
-function setDone(k,id,v){ if(v) state.done[doneKey(k,id)]=1; else delete state.done[doneKey(k,id)]; save(); }
+// a done entry is 1 (ticked, no name yet) or the name of the person who did it
+const doneBy=(k,id)=>{ const v=state.done[doneKey(k,id)]; return typeof v==="string" ? v : ""; };
+function setDone(k,id,v,name){ if(v) state.done[doneKey(k,id)]=(name&&name.trim())||1; else delete state.done[doneKey(k,id)]; save(); }
+
+/* people list: every name used on a tick or as accountable / responsible, so it can be picked next time */
+const peopleSorted=()=>state.people.slice().sort((a,b)=>a.localeCompare(b));
+function rememberPerson(name){
+  name=(name||"").trim(); if(!name) return;
+  if(!state.people.some(p=>p.toLowerCase()===name.toLowerCase())){ state.people.push(name); save(); }
+}
+function renderPeople(){
+  $("#peopleList").innerHTML=peopleSorted().map(p=>`<option value="${esc(p)}"></option>`).join("");
+  const box=$("#peopleBox");
+  if(!state.people.length){ box.innerHTML=`<span class="muted">No names yet. Names are remembered when someone ticks a task or is set as accountable or responsible.</span>`; return; }
+  box.innerHTML=peopleSorted().map(p=>`<span class="person">${esc(p)}<button type="button" data-name="${esc(p)}" aria-label="Remove ${esc(p)} from the list" title="Remove from list">×</button></span>`).join("");
+  box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ state.people=state.people.filter(p=>p!==b.dataset.name); save(); renderPeople(); toast("Removed from the list"); });
+}
+
+// the "Done by" line under a ticked task: shows the name, or lets the person pick or type one
+function attachDoneBy(row,t,k){
+  const by=row.querySelector(".by");
+  let mode="view";
+  const onBtn=(el,fn)=>{ el.onclick=e=>{ e.preventDefault(); e.stopPropagation(); fn(); }; };
+  const draw=focus=>{
+    if(!isDone(k,t.id)){ by.innerHTML=""; mode="view"; return; }
+    const name=doneBy(k,t.id);
+    if(mode==="view"){
+      by.innerHTML=name ? `Done by <b>${esc(name)}</b> <button type="button" class="lnk">change</button>` : `<button type="button" class="lnk">Add your name</button>`;
+      onBtn(by.querySelector("button"),()=>{ mode=state.people.length?"pick":"type"; draw(true); });
+      return;
+    }
+    if(mode==="pick"){
+      by.innerHTML=`<select class="byselect" aria-label="Who did this"><option value="">Who did this?</option>${peopleSorted().map(p=>`<option${p===name?" selected":""}>${esc(p)}</option>`).join("")}<option value="__new">Type a name</option></select> <button type="button" class="lnk">cancel</button>`;
+      const sel=by.querySelector("select");
+      sel.onchange=()=>{ if(sel.value==="__new"){ mode="type"; draw(true); } else if(sel.value) commit(sel.value); };
+      onBtn(by.querySelector("button"),()=>{ mode="view"; draw(); });
+      if(focus) sel.focus();
+      return;
+    }
+    by.innerHTML=`<input class="byinput" type="text" maxlength="60" placeholder="Your name" list="peopleList" aria-label="Your name"> <button type="button" class="lnk save">save</button> <button type="button" class="lnk cancel">cancel</button>`;
+    const inp=by.querySelector("input"); inp.value=name;
+    const finish=()=>{ if(inp.value.trim()) commit(inp.value); else { mode="view"; draw(); } };
+    inp.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); finish(); } if(e.key==="Escape"){ mode="view"; draw(); } };
+    onBtn(by.querySelector(".save"),finish);
+    onBtn(by.querySelector(".cancel"),()=>{ mode="view"; draw(); });
+    if(focus) inp.focus();
+  };
+  const commit=name=>{ name=name.trim(); rememberPerson(name); setDone(k,t.id,true,name); mode="view"; draw(); renderPeople(); };
+  draw();
+  return { refresh:()=>{ mode="view"; draw(); }, prompt:()=>{ mode=state.people.length?"pick":"type"; draw(true); } };
+}
 
 const today = new Date(); today.setHours(0,0,0,0);
 let selected = new Date(today);
@@ -443,10 +511,20 @@ function taskRow(t,k){
   const row=document.createElement("label");
   row.className=`task ${TEAMS[t.team].cls}${done?" done":""}`;
   const who=whoText(t);
-  row.innerHTML=`<input type="checkbox" ${done?"checked":""}><span class="stripe"></span><span><div class="name">${esc(t.name)}</div>${t.desc?`<div class="desc">${esc(t.desc)}</div>`:""}${who?`<div class="who">${esc(who)}</div>`:""}</span><span class="tag">${TEAMS[t.team].name}${t.freq!=="daily"?" · "+freqLabel(t):""}</span>`;
-  row.querySelector("input").onchange=e=>{ setDone(k,t.id,e.target.checked); row.classList.toggle("done",e.target.checked); renderRail(); if($("#view-cal").classList.contains("on")) renderCal(); };
+  row.innerHTML=`<input type="checkbox" ${done?"checked":""}><span class="stripe"></span><span><div class="name">${esc(t.name)}</div>${t.desc?`<div class="desc">${esc(t.desc)}</div>`:""}${who?`<div class="who">${esc(who)}</div>`:""}<div class="by"></div></span><span class="tag">${TEAMS[t.team].name}${t.freq!=="daily"?" · "+freqLabel(t):""}</span>`;
+  const by=attachDoneBy(row,t,k);
+  row.querySelector("input").onchange=e=>{
+    setDone(k,t.id,e.target.checked);
+    row.classList.toggle("done",e.target.checked);
+    // ticking asks for the person's name straight away; unticking clears the name line
+    if(e.target.checked) by.prompt(); else by.refresh();
+    renderRail(); if($("#view-cal").classList.contains("on")) renderCal();
+  };
   return row;
 }
+
+// "Outstanding from earlier" is switched off for now (user request). Flip to true to bring the group back.
+const SHOW_OUTSTANDING=false;
 
 function renderDay(){
   const v=$("#view-day"); v.innerHTML="";
@@ -456,7 +534,7 @@ function renderDay(){
 
   // outstanding scheduled items from earlier days in the last 31 days, not done
   const outstanding=[];
-  for(let i=1;i<=31;i++){
+  for(let i=1;i<=31 && SHOW_OUTSTANDING;i++){
     const d=new Date(selected); d.setDate(d.getDate()-i);
     if(d>today) continue;
     const s=(scheduledForMonth(d.getFullYear(),d.getMonth())[key(d)]||[]);
@@ -479,7 +557,7 @@ function renderDay(){
     list.forEach(t=>box.appendChild(taskRow(t,kk)));
     g.appendChild(box); v.appendChild(g);
   }
-  if(outstanding.length && selected<=today){
+  if(SHOW_OUTSTANDING && outstanding.length && selected<=today){
     const g=document.createElement("div"); g.className="group";
     g.innerHTML=`<h3>Outstanding from earlier<span>${outstanding.length} not ticked</span></h3>`;
     const box=document.createElement("div"); box.className="tasks";
@@ -642,6 +720,7 @@ const sameDef=(a,b)=>a.name===b.name&&(a.desc||"")===(b.desc||"")&&a.team===b.te
 
 function setRoles(id,a,r){
   a=a.trim(); r=r.trim();
+  rememberPerson(a); rememberPerson(r);
   if(a||r) state.roles[id]={a,r}; else delete state.roles[id];
 }
 
@@ -689,7 +768,7 @@ function deleteTask(id){
   }
 }
 
-function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); renderTasks(); }
+function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); renderTasks(); renderPeople(); }
 
 /* ---------- navigation ---------- */
 function switchView(v){
