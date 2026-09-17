@@ -7,11 +7,11 @@ Single-file static web app (`index.html`) that tracks recurring Ops, Compliance 
 - **Month tab**: calendar grid showing scheduled items as chips (daily items deliberately not shown). Click a day to open it.
 - **Adhoc log tab**: log occurrences of adhoc items (IDR, EDR, Breaches, Unlisted Transactions, Contributory Scheme Redemptions) with date and note; mark closed; delete.
 - **Schedule tab**: reference table of every task by frequency and team, with accountable / responsible shown under each task when set.
-- **Tasks tab**: users add their own tasks (name, description, team, frequency, day of week or day of month) and set an **Accountable** and **Responsible** person on any task, built-in or added. Added tasks can be edited and deleted; built-in tasks only take people changes. Added tasks flow into the Day, Month, Adhoc and Schedule views like built-in ones.
+- **Tasks tab**: users add their own tasks (name, description, team, frequency, day of week or day of month) and set an **Accountable** and **Responsible** person on any task. Every task, built-in or added, can be edited. Added tasks can be deleted; built-in tasks are "removed" (hidden) instead and can be restored, and edited built-in tasks can be reset to their standard definition. Added tasks flow into the Day, Month, Adhoc and Schedule views like built-in ones.
 - Left rail: selected date with prev/next/today, team filter toggles (persisted), progress for the day, export/import of state as JSON.
 
 ## Source of truth
-`source/Clime_Task_Tracking_Calendar.xlsx` is the original spreadsheet. Built-in task definitions live in the `TASKS` array in `index.html`; edit there to change the standard set. Fields: `id`, `team` (ops | comp | cs), `freq` (daily | weekly | fortnightly | monthly | adhoc), `dow` for weekly (1 = Mon), `dom` for monthly (1 | 15 | 30), `name`, optional `desc`. User-added tasks use the same shape, live in `state.custom`, and get ids prefixed `custom-`. Always read tasks through `allTasks()`, never `TASKS` directly.
+`source/Clime_Task_Tracking_Calendar.xlsx` is the original spreadsheet. Built-in task definitions live in the `TASKS` array in `index.html`; edit there to change the standard set. Fields: `id`, `team` (ops | comp | cs), `freq` (daily | weekly | fortnightly | monthly | adhoc), `dow` for weekly (1 = Mon), `dom` for monthly (1 | 15 | 30), `name`, optional `desc`. User-added tasks use the same shape, live in `state.custom`, and get ids prefixed `custom-`. Edits to built-in tasks are stored as full definitions in `state.overrides[id]` (dropped automatically if the edit matches the default again); removed built-ins are listed in `state.hidden`. Always read tasks through `allTasks()`, which applies overrides and hides removed tasks, never `TASKS` directly.
 
 ## Date rules (confirmed with the user)
 - Daily tasks appear on weekdays only.
@@ -28,10 +28,12 @@ Single-file static web app (`index.html`) that tracks recurring Ops, Compliance 
   "adhoc": [ { "ts", "task", "date", "note", "closed" } ],
   "teams": { "ops": true, "comp": true, "cs": true },
   "custom": [ { "id": "custom-…", "team", "freq", "dow"?, "dom"?, "name", "desc"? } ],
-  "roles": { "taskId": { "a": "Accountable person", "r": "Responsible person" } }
+  "roles": { "taskId": { "a": "Accountable person", "r": "Responsible person" } },
+  "overrides": { "builtinId": { "id", "team", "freq", "dow"?, "dom"?, "name", "desc"? } },
+  "hidden": [ "builtinId" ]
 }
 ```
-`custom` and `roles` are optional so older exports still import. `fromStored()` normalises any stored or imported object. Deleting an added task also removes its ticks, roles and adhoc log entries.
+`custom`, `roles`, `overrides` and `hidden` are optional so older exports still import. `fromStored()` normalises any stored or imported object. Deleting an added task also removes its ticks, roles and adhoc log entries; removing a built-in task keeps them so a restore is lossless.
 State is per browser. Export/import exists for handover. If shared team state is needed, a backend (or a hosted artifact with a DB) would replace this.
 
 ## Style notes

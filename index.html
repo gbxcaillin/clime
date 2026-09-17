@@ -281,8 +281,9 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
           <button class="cancel" type="button" id="tfCancel" hidden>Cancel</button>
         </div>
       </form>
-      <p class="note" style="margin:0 0 14px">Tasks you add here are saved in this browser and included in Export data. Built-in tasks can be given an accountable and responsible person; their name, team and frequency are fixed.</p>
+      <p class="note" style="margin:0 0 14px">Every task can be edited or removed, and any task can be given an accountable and responsible person. Changes are saved in this browser and included in Export data. Edited standard tasks can be reset, and removed ones restored, from the list below.</p>
       <div class="tblwrap"><table class="ref" id="taskTable"></table></div>
+      <div id="hiddenTasks" class="note" style="margin-top:14px"></div>
     </section>
   </main>
 </div>
@@ -330,9 +331,13 @@ const TASKS = [
 ];
 
 /* built-in tasks plus any the user has added on the Tasks tab */
-const allTasks = () => TASKS.concat(state.custom);
-const findTask = id => allTasks().find(t=>t.id===id);
+// built-in tasks can be edited (state.overrides) or removed (state.hidden) without touching TASKS
 const isCustom = id => state.custom.some(t=>t.id===id);
+const isBuiltin = id => TASKS.some(t=>t.id===id);
+const isOverridden = id => !!state.overrides[id];
+const allTasks = () => TASKS.filter(t=>!state.hidden.includes(t.id)).map(t=>state.overrides[t.id] ? {...state.overrides[t.id], id:t.id} : t).concat(state.custom);
+const findTask = id => allTasks().find(t=>t.id===id);
+const hiddenTasks = () => TASKS.filter(t=>state.hidden.includes(t.id));
 const roleOf = id => state.roles[id] || {};
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const whoText = t => { const r=roleOf(t.id); const bits=[]; if(r.a) bits.push("A: "+r.a); if(r.r) bits.push("R: "+r.r); return bits.join(" · "); };
@@ -380,15 +385,20 @@ function tasksForDay(d){
 const LS="clime-tracker-v1";
 let state = load();
 // normalise a stored or imported state object; custom tasks and roles are optional for older exports
+// a function declaration so it is hoisted: load() runs before this point in the file
+function validDef(t){ return !!(t&&t.name&&TEAMS[t.team]&&["daily","weekly","fortnightly","monthly","adhoc"].includes(t.freq)); }
 function fromStored(s){
-  const custom=Array.isArray(s.custom) ? s.custom.filter(t=>t&&t.id&&t.name&&TEAMS[t.team]&&["daily","weekly","fortnightly","monthly","adhoc"].includes(t.freq)) : [];
+  const custom=Array.isArray(s.custom) ? s.custom.filter(t=>validDef(t)&&t.id) : [];
   const roles={};
   if(s.roles&&typeof s.roles==="object") for(const [id,r] of Object.entries(s.roles)) if(r&&(r.a||r.r)) roles[id]={a:String(r.a||""), r:String(r.r||"")};
-  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles};
+  const overrides={};
+  if(s.overrides&&typeof s.overrides==="object") for(const [id,t] of Object.entries(s.overrides)) if(TASKS.some(x=>x.id===id)&&validDef(t)) overrides[id]={...t, id};
+  const hidden=Array.isArray(s.hidden) ? s.hidden.filter(id=>TASKS.some(x=>x.id===id)) : [];
+  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles, overrides, hidden};
 }
 function load(){
   try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.done) return fromStored(s); }catch(e){}
-  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}};
+  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}, overrides:{}, hidden:[]};
 }
 function save(){ try{ localStorage.setItem(LS,JSON.stringify(state)); }catch(e){ toast("Could not save. Check browser storage settings."); } }
 const doneKey=(k,id)=>`${k}|${id}`;
@@ -563,19 +573,34 @@ function renderTasks(){
   const tasks=allTasks().slice().sort(freqSort);
   let html=`<tr><th>Task</th><th>Team</th><th>When</th><th>Accountable</th><th>Responsible</th><th></th></tr>`;
   for(const t of tasks){
-    const r=roleOf(t.id), custom=isCustom(t.id);
+    const r=roleOf(t.id), custom=isCustom(t.id), edited=isOverridden(t.id);
     html+=`<tr data-id="${esc(t.id)}"${t.id===editingId?' class="editing"':""}>
-      <td style="width:auto;color:var(--ink);font-weight:500">${esc(t.name)}${custom?'<span class="pill">added</span>':""}${t.desc?`<div class="muted">${esc(t.desc)}</div>`:""}</td>
+      <td style="width:auto;color:var(--ink);font-weight:500">${esc(t.name)}${custom?'<span class="pill">added</span>':edited?'<span class="pill">edited</span>':""}${t.desc?`<div class="muted">${esc(t.desc)}</div>`:""}</td>
       <td>${TEAMS[t.team].name}</td>
       <td>${freqLabel(t)}</td>
       <td>${r.a?esc(r.a):'<span class="muted">Not set</span>'}</td>
       <td>${r.r?esc(r.r):'<span class="muted">Not set</span>'}</td>
-      <td class="act"><button type="button" class="edit">Edit</button>${custom?'<button type="button" class="del">Delete</button>':""}</td>
+      <td class="act"><button type="button" class="edit">Edit</button>${edited?'<button type="button" class="reset">Reset</button>':""}<button type="button" class="del">${custom?"Delete":"Remove"}</button></td>
     </tr>`;
   }
   tb.innerHTML=html;
   tb.querySelectorAll("button.edit").forEach(b=>b.onclick=()=>startEdit(b.closest("tr").dataset.id));
-  tb.querySelectorAll("button.del").forEach(b=>b.onclick=()=>deleteCustom(b.closest("tr").dataset.id));
+  tb.querySelectorAll("button.reset").forEach(b=>b.onclick=()=>resetBuiltin(b.closest("tr").dataset.id));
+  tb.querySelectorAll("button.del").forEach(b=>b.onclick=()=>deleteTask(b.closest("tr").dataset.id));
+
+  const hid=$("#hiddenTasks");
+  const hiddenList=hiddenTasks();
+  if(!hiddenList.length){ hid.innerHTML=""; return; }
+  hid.innerHTML=`Removed standard tasks: `+hiddenList.map(t=>`<span>${esc(t.name)} <button type="button" class="restore" data-id="${esc(t.id)}" style="color:var(--today);text-decoration:underline;text-underline-offset:3px;padding:0;font-size:13px">Restore</button></span>`).join(", ");
+  hid.querySelectorAll("button.restore").forEach(b=>b.onclick=()=>{ state.hidden=state.hidden.filter(id=>id!==b.dataset.id); save(); renderAll(); toast("Task restored"); });
+}
+
+function resetBuiltin(id){
+  const t=TASKS.find(x=>x.id===id); if(!t||!isOverridden(id)) return;
+  if(!confirm(`Reset "${findTask(id).name}" to its standard definition (${t.name}, ${TEAMS[t.team].name}, ${freqLabel(t)})?`)) return;
+  delete state.overrides[id];
+  if(editingId===id) resetTaskForm();
+  save(); renderAll(); toast("Task reset");
 }
 
 function syncFreqFields(){
@@ -588,7 +613,6 @@ $("#tfFreq").onchange=syncFreqFields;
 function resetTaskForm(){
   editingId=null;
   $("#taskForm").reset();
-  ["tfName","tfDesc","tfTeam","tfFreq","tfDow","tfDom"].forEach(id=>$("#"+id).disabled=false);
   $("#tfTitle").textContent="Add a task";
   $("#tfSave").textContent="Add task";
   $("#tfCancel").hidden=true;
@@ -599,21 +623,22 @@ $("#tfCancel").onclick=()=>{ resetTaskForm(); renderTasks(); };
 function startEdit(id){
   const t=findTask(id); if(!t) return;
   editingId=id;
-  const custom=isCustom(id), r=roleOf(id);
+  const r=roleOf(id);
   $("#tfName").value=t.name; $("#tfDesc").value=t.desc||"";
   $("#tfTeam").value=t.team; $("#tfFreq").value=t.freq;
   $("#tfDow").value=String(t.dow||1); $("#tfDom").value=String(t.dom||1);
   $("#tfAcc").value=r.a||""; $("#tfResp").value=r.r||"";
-  // built-in tasks keep their definition; only the people can change
-  ["tfName","tfDesc","tfTeam","tfFreq","tfDow","tfDom"].forEach(f=>$("#"+f).disabled=!custom);
-  $("#tfTitle").textContent=custom?"Edit task":"Edit people for "+t.name;
+  $("#tfTitle").textContent="Edit task";
   $("#tfSave").textContent="Save changes";
   $("#tfCancel").hidden=false;
   syncFreqFields();
   renderTasks();
   $("#taskForm").scrollIntoView({block:"nearest"});
-  (custom?$("#tfName"):$("#tfAcc")).focus();
+  $("#tfName").focus();
 }
+
+// true when a definition matches a built-in task exactly (so no override is needed)
+const sameDef=(a,b)=>a.name===b.name&&(a.desc||"")===(b.desc||"")&&a.team===b.team&&a.freq===b.freq&&(a.dow||0)===(b.dow||0)&&(a.dom||0)===(b.dom||0);
 
 function setRoles(id,a,r){
   a=a.trim(); r=r.trim();
@@ -623,9 +648,6 @@ function setRoles(id,a,r){
 $("#taskForm").onsubmit=e=>{
   e.preventDefault();
   const a=$("#tfAcc").value, r=$("#tfResp").value;
-  if(editingId && !isCustom(editingId)){
-    setRoles(editingId,a,r); save(); resetTaskForm(); renderAll(); toast("People saved"); return;
-  }
   const name=$("#tfName").value.trim();
   if(!name){ toast("Give the task a name."); $("#tfName").focus(); return; }
   const freq=$("#tfFreq").value;
@@ -633,21 +655,38 @@ $("#taskForm").onsubmit=e=>{
   const desc=$("#tfDesc").value.trim(); if(desc) def.desc=desc;
   if(freq==="weekly") def.dow=Number($("#tfDow").value);
   if(freq==="monthly") def.dom=Number($("#tfDom").value);
-  const i=state.custom.findIndex(t=>t.id===def.id);
-  if(i>=0) state.custom[i]=def; else state.custom.push(def);
+  let msg;
+  if(isBuiltin(def.id)){
+    // editing a standard task: store as an override, or drop the override if it now matches the default
+    const base=TASKS.find(t=>t.id===def.id);
+    if(sameDef(def,base)) delete state.overrides[def.id]; else state.overrides[def.id]=def;
+    msg="Task updated";
+  } else {
+    const i=state.custom.findIndex(t=>t.id===def.id);
+    if(i>=0) state.custom[i]=def; else state.custom.push(def);
+    msg=i>=0?"Task updated":"Task added";
+  }
   setRoles(def.id,a,r);
-  save(); resetTaskForm(); renderAll(); toast(i>=0?"Task updated":"Task added");
+  save(); resetTaskForm(); renderAll(); toast(msg);
 };
 
-function deleteCustom(id){
-  const t=findTask(id); if(!t||!isCustom(id)) return;
-  if(!confirm(`Delete "${t.name}"? Its ticks and log entries will be removed too.`)) return;
-  state.custom=state.custom.filter(x=>x.id!==id);
-  delete state.roles[id];
-  for(const k of Object.keys(state.done)) if(k.endsWith("|"+id)) delete state.done[k];
-  state.adhoc=state.adhoc.filter(e=>e.task!==id);
-  if(editingId===id) resetTaskForm();
-  save(); renderAll(); toast("Task deleted");
+function deleteTask(id){
+  const t=findTask(id); if(!t) return;
+  if(isCustom(id)){
+    if(!confirm(`Delete "${t.name}"? Its ticks and log entries will be removed too.`)) return;
+    state.custom=state.custom.filter(x=>x.id!==id);
+    delete state.roles[id];
+    for(const k of Object.keys(state.done)) if(k.endsWith("|"+id)) delete state.done[k];
+    state.adhoc=state.adhoc.filter(e=>e.task!==id);
+    if(editingId===id) resetTaskForm();
+    save(); renderAll(); toast("Task deleted");
+  } else {
+    // standard tasks are hidden rather than deleted, so ticks and log entries survive a restore
+    if(!confirm(`Remove "${t.name}" from the tracker? You can restore it later from the Tasks tab.`)) return;
+    if(!state.hidden.includes(id)) state.hidden.push(id);
+    if(editingId===id) resetTaskForm();
+    save(); renderAll(); toast("Task removed");
+  }
 }
 
 function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); renderTasks(); }
