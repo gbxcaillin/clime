@@ -68,8 +68,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .task .name{font-weight:500}
 .task .desc{color:var(--ink-2);font-size:13px;margin-top:1px}
 .task .tag{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.task .who{color:var(--ink-2);font-size:12px;margin-top:2px}
 .task.done .name{color:var(--done);text-decoration:line-through}
-.task.done .desc{color:var(--done)}
+.task.done .desc,.task.done .who{color:var(--done)}
 .t-ops .stripe{background:var(--ops)} .t-comp .stripe{background:var(--comp)} .t-cs .stripe{background:var(--cs)}
 .empty{padding:24px 16px;color:var(--ink-2);background:var(--panel);border:1px dashed var(--line);border-radius:8px}
 .note{color:var(--ink-2);font-size:13px;margin:-14px 0 20px}
@@ -106,6 +107,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .form select,.form input,.form textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink)}
 .form textarea{min-height:70px;resize:vertical}
 .form .submit{margin-top:14px;background:var(--ink);color:#fff;border-radius:6px;padding:9px 14px;font-weight:500}
+.form select:disabled,.form input:disabled{background:var(--bg);color:var(--ink-2)}
+
+/* task management */
+.form.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 14px;align-items:end;margin-bottom:24px}
+.form.grid label{margin-top:10px}
+.form.grid .span3{grid-column:1/-1}
+.form.grid .actions{grid-column:1/-1;display:flex;gap:14px;align-items:center}
+.form .cancel{margin-top:14px;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px;font-size:13px}
+.form h3{margin:0 0 4px;font-family:var(--cond);font-size:16px;font-weight:600;grid-column:1/-1}
+@media(max-width:860px){.form.grid{grid-template-columns:1fr}}
+table.ref .muted{color:var(--ink-2);font-size:13px}
+table.ref .act{white-space:nowrap}
+table.ref .act button{font-size:13px;color:var(--today);margin-right:10px;padding:0}
+table.ref .act button.del{color:#b91c1c}
+table.ref tr.editing td{background:#f3f6fb}
+.pill{display:inline-block;font-size:11px;line-height:1.4;padding:1px 6px;border-radius:4px;background:var(--line-2);color:var(--ink-2);margin-left:6px;vertical-align:1px}
+.ar{font-size:12px;color:var(--ink-2)}
 .log{display:flex;flex-direction:column;gap:8px}
 .entry{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:grid;grid-template-columns:6px 1fr auto;gap:12px}
 .entry .stripe{width:4px;border-radius:2px;align-self:stretch}
@@ -165,6 +183,7 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
       <button role="tab" aria-selected="false" data-view="cal">Month</button>
       <button role="tab" aria-selected="false" data-view="adhoc">Adhoc log</button>
       <button role="tab" aria-selected="false" data-view="ref">Schedule</button>
+      <button role="tab" aria-selected="false" data-view="tasks">Tasks</button>
     </div>
 
     <section class="view on" id="view-day"></section>
@@ -200,6 +219,70 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
     <section class="view" id="view-ref">
       <div class="tblwrap"><table class="ref" id="refTable"></table></div>
       <p class="note" style="margin-top:14px">Date rules: the 1st and 15th move to the next business day if they land on a weekend. The 30th uses the last business day of the month when the 30th is a weekend or the month has no 30th. Fortnightly items are shown on the 1st and 15th. Daily items appear on weekdays only.</p>
+    </section>
+
+    <section class="view" id="view-tasks">
+      <form class="form grid" id="taskForm" autocomplete="off">
+        <h3 id="tfTitle">Add a task</h3>
+        <div class="span3">
+          <label for="tfName">Task name</label>
+          <input id="tfName" maxlength="120" required placeholder="e.g. Monthly fee run">
+        </div>
+        <div class="span3">
+          <label for="tfDesc">Description (optional)</label>
+          <input id="tfDesc" maxlength="200" placeholder="Short note shown under the task name">
+        </div>
+        <div>
+          <label for="tfTeam">Team</label>
+          <select id="tfTeam">
+            <option value="ops">Ops</option>
+            <option value="comp">Compliance</option>
+            <option value="cs">Client Services</option>
+          </select>
+        </div>
+        <div>
+          <label for="tfFreq">Frequency</label>
+          <select id="tfFreq">
+            <option value="daily">Daily (weekdays)</option>
+            <option value="weekly">Weekly</option>
+            <option value="fortnightly">Fortnightly (1st and 15th)</option>
+            <option value="monthly">Monthly</option>
+            <option value="adhoc">Adhoc (as needed)</option>
+          </select>
+        </div>
+        <div id="tfDowWrap" hidden>
+          <label for="tfDow">Day of week</label>
+          <select id="tfDow">
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5">Friday</option>
+          </select>
+        </div>
+        <div id="tfDomWrap" hidden>
+          <label for="tfDom">Day of month</label>
+          <select id="tfDom">
+            <option value="1">1st</option>
+            <option value="15">15th</option>
+            <option value="30">30th</option>
+          </select>
+        </div>
+        <div>
+          <label for="tfAcc">Accountable</label>
+          <input id="tfAcc" maxlength="80" placeholder="Who signs it off">
+        </div>
+        <div>
+          <label for="tfResp">Responsible</label>
+          <input id="tfResp" maxlength="80" placeholder="Who does the work">
+        </div>
+        <div class="actions">
+          <button class="submit" type="submit" id="tfSave">Add task</button>
+          <button class="cancel" type="button" id="tfCancel" hidden>Cancel</button>
+        </div>
+      </form>
+      <p class="note" style="margin:0 0 14px">Tasks you add here are saved in this browser and included in Export data. Built-in tasks can be given an accountable and responsible person; their name, team and frequency are fixed.</p>
+      <div class="tblwrap"><table class="ref" id="taskTable"></table></div>
     </section>
   </main>
 </div>
@@ -246,6 +329,14 @@ const TASKS = [
   {id:"breaches",      team:"comp", freq:"adhoc", name:"Breaches"}
 ];
 
+/* built-in tasks plus any the user has added on the Tasks tab */
+const allTasks = () => TASKS.concat(state.custom);
+const findTask = id => allTasks().find(t=>t.id===id);
+const isCustom = id => state.custom.some(t=>t.id===id);
+const roleOf = id => state.roles[id] || {};
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const whoText = t => { const r=roleOf(t.id); const bits=[]; if(r.a) bits.push("A: "+r.a); if(r.r) bits.push("R: "+r.r); return bits.join(" · "); };
+
 /* ---------- date helpers ---------- */
 const pad = n => String(n).padStart(2,"0");
 const key = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -268,28 +359,36 @@ function scheduledForMonth(y,m){
   const map={};
   const add=(d,t)=>{ const k=key(d); (map[k]=map[k]||[]).push(t); };
   // anchors may spill into next month for the 1st on weekend? No: nextBiz of the 1st stays inside the month. 15th -> max 17th. Fine.
-  for(const t of TASKS){
+  const tasks=allTasks();
+  for(const t of tasks){
     if(t.freq==="monthly") add(anchorDate(y,m,t.dom),t);
     if(t.freq==="fortnightly"){ add(anchorDate(y,m,1),t); add(anchorDate(y,m,15),t); }
   }
   for(let d=1; d<=daysInMonth(y,m); d++){
     const dt=new Date(y,m,d);
-    for(const t of TASKS) if(t.freq==="weekly" && t.dow===dt.getDay()) add(dt,t);
+    for(const t of tasks) if(t.freq==="weekly" && t.dow===dt.getDay()) add(dt,t);
   }
   return map;
 }
 function tasksForDay(d){
   const sched = scheduledForMonth(d.getFullYear(),d.getMonth())[key(d)]||[];
-  const daily = isWeekend(d) ? [] : TASKS.filter(t=>t.freq==="daily");
+  const daily = isWeekend(d) ? [] : allTasks().filter(t=>t.freq==="daily");
   return {daily, sched};
 }
 
 /* ---------- state ---------- */
 const LS="clime-tracker-v1";
 let state = load();
+// normalise a stored or imported state object; custom tasks and roles are optional for older exports
+function fromStored(s){
+  const custom=Array.isArray(s.custom) ? s.custom.filter(t=>t&&t.id&&t.name&&TEAMS[t.team]&&["daily","weekly","fortnightly","monthly","adhoc"].includes(t.freq)) : [];
+  const roles={};
+  if(s.roles&&typeof s.roles==="object") for(const [id,r] of Object.entries(s.roles)) if(r&&(r.a||r.r)) roles[id]={a:String(r.a||""), r:String(r.r||"")};
+  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles};
+}
 function load(){
-  try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.done) return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}}; }catch(e){}
-  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}};
+  try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.done) return fromStored(s); }catch(e){}
+  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}};
 }
 function save(){ try{ localStorage.setItem(LS,JSON.stringify(state)); }catch(e){ toast("Could not save. Check browser storage settings."); } }
 const doneKey=(k,id)=>`${k}|${id}`;
@@ -333,7 +432,8 @@ function taskRow(t,k){
   const done=isDone(k,t.id);
   const row=document.createElement("label");
   row.className=`task ${TEAMS[t.team].cls}${done?" done":""}`;
-  row.innerHTML=`<input type="checkbox" ${done?"checked":""}><span class="stripe"></span><span><div class="name">${t.name}</div>${t.desc?`<div class="desc">${t.desc}</div>`:""}</span><span class="tag">${TEAMS[t.team].name}${t.freq!=="daily"?" · "+freqLabel(t):""}</span>`;
+  const who=whoText(t);
+  row.innerHTML=`<input type="checkbox" ${done?"checked":""}><span class="stripe"></span><span><div class="name">${esc(t.name)}</div>${t.desc?`<div class="desc">${esc(t.desc)}</div>`:""}${who?`<div class="who">${esc(who)}</div>`:""}</span><span class="tag">${TEAMS[t.team].name}${t.freq!=="daily"?" · "+freqLabel(t):""}</span>`;
   row.querySelector("input").onchange=e=>{ setDone(k,t.id,e.target.checked); row.classList.toggle("done",e.target.checked); renderRail(); if($("#view-cal").classList.contains("on")) renderCal(); };
   return row;
 }
@@ -407,17 +507,19 @@ function renderCal(){
 
 function renderAdhoc(){
   const sel=$("#ahTask");
-  if(!sel.options.length){
-    TASKS.filter(t=>t.freq==="adhoc").forEach(t=>{ const o=document.createElement("option"); o.value=t.id; o.textContent=`${t.name} (${TEAMS[t.team].name})`; sel.appendChild(o); });
-    $("#ahDate").value=key(today);
-  }
+  const prev=sel.value;
+  if(!$("#ahDate").value) $("#ahDate").value=key(today);
+  sel.innerHTML="";
+  allTasks().filter(t=>t.freq==="adhoc").forEach(t=>{ const o=document.createElement("option"); o.value=t.id; o.textContent=`${t.name} (${TEAMS[t.team].name})`; sel.appendChild(o); });
+  if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
   const log=$("#ahLog"); log.innerHTML="";
   if(!state.adhoc.length){ log.innerHTML=`<div class="empty">No adhoc items logged yet. Add one on the left when an IDR, EDR, breach or unlisted transaction comes in.</div>`; return; }
   [...state.adhoc].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts).forEach(e=>{
-    const t=TASKS.find(x=>x.id===e.task); if(!t) return;
+    const t=findTask(e.task); if(!t) return;
     const d=fromKey(e.date);
+    const who=whoText(t);
     const el=document.createElement("div"); el.className="entry"+(e.closed?" closed":"");
-    el.innerHTML=`<span class="stripe" style="background:var(--${TEAMS[t.team].chip})"></span><span><div class="when">${fmtLong(d)}${e.closed?` · closed ${fmtLong(fromKey(e.closed))}`:""}</div><div class="what">${t.name}</div>${e.note?`<div class="memo"></div>`:""}${e.closed?"":`<button class="close">Mark closed</button>`}</span><button class="x" aria-label="Delete entry">Delete</button>`;
+    el.innerHTML=`<span class="stripe" style="background:var(--${TEAMS[t.team].chip})"></span><span><div class="when">${fmtLong(d)}${e.closed?` · closed ${fmtLong(fromKey(e.closed))}`:""}</div><div class="what">${esc(t.name)}</div>${who?`<div class="when">${esc(who)}</div>`:""}${e.note?`<div class="memo"></div>`:""}${e.closed?"":`<button class="close">Mark closed</button>`}</span><button class="x" aria-label="Delete entry">Delete</button>`;
     if(e.note) el.querySelector(".memo").textContent=e.note;
     const cb=el.querySelector(".close"); if(cb) cb.onclick=()=>{ e.closed=key(today); save(); renderAdhoc(); };
     el.querySelector(".x").onclick=()=>{ if(confirm("Delete this log entry?")){ state.adhoc=state.adhoc.filter(x=>x.ts!==e.ts); save(); renderAdhoc(); } };
@@ -426,26 +528,129 @@ function renderAdhoc(){
 }
 $("#ahAdd").onclick=()=>{
   const date=$("#ahDate").value; if(!date){ toast("Pick a date."); return; }
+  if(!$("#ahTask").value){ toast("No adhoc items defined. Add one on the Tasks tab."); return; }
   state.adhoc.push({ts:Date.now(), task:$("#ahTask").value, date, note:$("#ahNote").value.trim(), closed:null});
   save(); $("#ahNote").value=""; renderAdhoc(); toast("Added to log");
 };
 
+const FREQ_ORDER=["daily","weekly","fortnightly","monthly","adhoc"];
+// sort so weekly runs Mon..Fri and monthly 1st, 15th, 30th
+const freqSort=(a,b)=>FREQ_ORDER.indexOf(a.freq)-FREQ_ORDER.indexOf(b.freq)||(a.dow||0)-(b.dow||0)||(a.dom||0)-(b.dom||0);
+
 function renderRef(){
-  const tb=$("#refTable"); if(tb.rows.length) return;
-  const order=["daily","weekly","fortnightly","monthly","adhoc"];
+  const tb=$("#refTable");
+  const tasks=allTasks().slice().sort(freqSort);
   let html=`<tr><th>When</th><th>Ops</th><th>Compliance</th><th>Client Services</th></tr>`;
   const rows=[];
-  for(const fr of order){
-    const keys=[...new Set(TASKS.filter(t=>t.freq===fr).map(freqLabel))];
+  for(const fr of FREQ_ORDER){
+    const keys=[...new Set(tasks.filter(t=>t.freq===fr).map(freqLabel))];
     for(const lab of keys){
-      const cells=["ops","comp","cs"].map(tm=>TASKS.filter(t=>t.freq===fr&&freqLabel(t)===lab&&t.team===tm).map(t=>t.name+(t.desc?` <span style="color:var(--ink-2)">(${t.desc})</span>`:"")).join("<br>"));
+      const cells=["ops","comp","cs"].map(tm=>tasks.filter(t=>t.freq===fr&&freqLabel(t)===lab&&t.team===tm).map(t=>{
+        const who=whoText(t);
+        return esc(t.name)+(t.desc?` <span class="muted">(${esc(t.desc)})</span>`:"")+(who?`<br><span class="ar">${esc(who)}</span>`:"");
+      }).join("<br>"));
       rows.push(`<tr><td>${lab}</td><td>${cells[0]}</td><td>${cells[1]}</td><td>${cells[2]}</td></tr>`);
     }
   }
   tb.innerHTML=html+rows.join("");
 }
 
-function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); }
+/* ---------- task management (Tasks tab) ---------- */
+let editingId=null;
+
+function renderTasks(){
+  const tb=$("#taskTable");
+  const tasks=allTasks().slice().sort(freqSort);
+  let html=`<tr><th>Task</th><th>Team</th><th>When</th><th>Accountable</th><th>Responsible</th><th></th></tr>`;
+  for(const t of tasks){
+    const r=roleOf(t.id), custom=isCustom(t.id);
+    html+=`<tr data-id="${esc(t.id)}"${t.id===editingId?' class="editing"':""}>
+      <td style="width:auto;color:var(--ink);font-weight:500">${esc(t.name)}${custom?'<span class="pill">added</span>':""}${t.desc?`<div class="muted">${esc(t.desc)}</div>`:""}</td>
+      <td>${TEAMS[t.team].name}</td>
+      <td>${freqLabel(t)}</td>
+      <td>${r.a?esc(r.a):'<span class="muted">Not set</span>'}</td>
+      <td>${r.r?esc(r.r):'<span class="muted">Not set</span>'}</td>
+      <td class="act"><button type="button" class="edit">Edit</button>${custom?'<button type="button" class="del">Delete</button>':""}</td>
+    </tr>`;
+  }
+  tb.innerHTML=html;
+  tb.querySelectorAll("button.edit").forEach(b=>b.onclick=()=>startEdit(b.closest("tr").dataset.id));
+  tb.querySelectorAll("button.del").forEach(b=>b.onclick=()=>deleteCustom(b.closest("tr").dataset.id));
+}
+
+function syncFreqFields(){
+  const f=$("#tfFreq").value;
+  $("#tfDowWrap").hidden = f!=="weekly";
+  $("#tfDomWrap").hidden = f!=="monthly";
+}
+$("#tfFreq").onchange=syncFreqFields;
+
+function resetTaskForm(){
+  editingId=null;
+  $("#taskForm").reset();
+  ["tfName","tfDesc","tfTeam","tfFreq","tfDow","tfDom"].forEach(id=>$("#"+id).disabled=false);
+  $("#tfTitle").textContent="Add a task";
+  $("#tfSave").textContent="Add task";
+  $("#tfCancel").hidden=true;
+  syncFreqFields();
+}
+$("#tfCancel").onclick=()=>{ resetTaskForm(); renderTasks(); };
+
+function startEdit(id){
+  const t=findTask(id); if(!t) return;
+  editingId=id;
+  const custom=isCustom(id), r=roleOf(id);
+  $("#tfName").value=t.name; $("#tfDesc").value=t.desc||"";
+  $("#tfTeam").value=t.team; $("#tfFreq").value=t.freq;
+  $("#tfDow").value=String(t.dow||1); $("#tfDom").value=String(t.dom||1);
+  $("#tfAcc").value=r.a||""; $("#tfResp").value=r.r||"";
+  // built-in tasks keep their definition; only the people can change
+  ["tfName","tfDesc","tfTeam","tfFreq","tfDow","tfDom"].forEach(f=>$("#"+f).disabled=!custom);
+  $("#tfTitle").textContent=custom?"Edit task":"Edit people for "+t.name;
+  $("#tfSave").textContent="Save changes";
+  $("#tfCancel").hidden=false;
+  syncFreqFields();
+  renderTasks();
+  $("#taskForm").scrollIntoView({block:"nearest"});
+  (custom?$("#tfName"):$("#tfAcc")).focus();
+}
+
+function setRoles(id,a,r){
+  a=a.trim(); r=r.trim();
+  if(a||r) state.roles[id]={a,r}; else delete state.roles[id];
+}
+
+$("#taskForm").onsubmit=e=>{
+  e.preventDefault();
+  const a=$("#tfAcc").value, r=$("#tfResp").value;
+  if(editingId && !isCustom(editingId)){
+    setRoles(editingId,a,r); save(); resetTaskForm(); renderAll(); toast("People saved"); return;
+  }
+  const name=$("#tfName").value.trim();
+  if(!name){ toast("Give the task a name."); $("#tfName").focus(); return; }
+  const freq=$("#tfFreq").value;
+  const def={ id: editingId || ("custom-"+Date.now().toString(36)), team:$("#tfTeam").value, freq, name };
+  const desc=$("#tfDesc").value.trim(); if(desc) def.desc=desc;
+  if(freq==="weekly") def.dow=Number($("#tfDow").value);
+  if(freq==="monthly") def.dom=Number($("#tfDom").value);
+  const i=state.custom.findIndex(t=>t.id===def.id);
+  if(i>=0) state.custom[i]=def; else state.custom.push(def);
+  setRoles(def.id,a,r);
+  save(); resetTaskForm(); renderAll(); toast(i>=0?"Task updated":"Task added");
+};
+
+function deleteCustom(id){
+  const t=findTask(id); if(!t||!isCustom(id)) return;
+  if(!confirm(`Delete "${t.name}"? Its ticks and log entries will be removed too.`)) return;
+  state.custom=state.custom.filter(x=>x.id!==id);
+  delete state.roles[id];
+  for(const k of Object.keys(state.done)) if(k.endsWith("|"+id)) delete state.done[k];
+  state.adhoc=state.adhoc.filter(e=>e.task!==id);
+  if(editingId===id) resetTaskForm();
+  save(); renderAll(); toast("Task deleted");
+}
+
+function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); renderTasks(); }
 
 /* ---------- navigation ---------- */
 function switchView(v){
@@ -470,12 +675,13 @@ $("#importBtn").onclick=()=>$("#importFile").click();
 $("#importFile").onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const r=new FileReader();
-  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.done) throw 0; state={done:s.done, adhoc:s.adhoc||[], teams:s.teams||state.teams}; save(); renderAll(); toast("Data imported"); }catch(_){ toast("That file is not a tracker export."); } };
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s||!s.done) throw 0; const teams=state.teams; state=fromStored(s); if(!s.teams) state.teams=teams; resetTaskForm(); save(); renderAll(); toast("Data imported"); }catch(_){ toast("That file is not a tracker export."); } };
   r.readAsText(f); e.target.value="";
 };
 
 let toastT; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2200); }
 
+syncFreqFields();
 renderAll();
 </script>
 </body>

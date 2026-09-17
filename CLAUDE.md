@@ -6,11 +6,12 @@ Single-file static web app (`index.html`) that tracks recurring Ops, Compliance 
 - **Day tab**: checklist for the selected day. Shows scheduled (weekly / fortnightly / monthly) items, then daily items, then an "Outstanding from earlier" group listing unticked scheduled items from the previous 31 days.
 - **Month tab**: calendar grid showing scheduled items as chips (daily items deliberately not shown). Click a day to open it.
 - **Adhoc log tab**: log occurrences of adhoc items (IDR, EDR, Breaches, Unlisted Transactions, Contributory Scheme Redemptions) with date and note; mark closed; delete.
-- **Schedule tab**: reference table of every task by frequency and team.
+- **Schedule tab**: reference table of every task by frequency and team, with accountable / responsible shown under each task when set.
+- **Tasks tab**: users add their own tasks (name, description, team, frequency, day of week or day of month) and set an **Accountable** and **Responsible** person on any task, built-in or added. Added tasks can be edited and deleted; built-in tasks only take people changes. Added tasks flow into the Day, Month, Adhoc and Schedule views like built-in ones.
 - Left rail: selected date with prev/next/today, team filter toggles (persisted), progress for the day, export/import of state as JSON.
 
 ## Source of truth
-`source/Clime_Task_Tracking_Calendar.xlsx` is the original spreadsheet. Task definitions live in the `TASKS` array in `index.html`; edit there to add or change tasks. Fields: `id`, `team` (ops | comp | cs), `freq` (daily | weekly | fortnightly | monthly | adhoc), `dow` for weekly (1 = Mon), `dom` for monthly (1 | 15 | 30), `name`, optional `desc`.
+`source/Clime_Task_Tracking_Calendar.xlsx` is the original spreadsheet. Built-in task definitions live in the `TASKS` array in `index.html`; edit there to change the standard set. Fields: `id`, `team` (ops | comp | cs), `freq` (daily | weekly | fortnightly | monthly | adhoc), `dow` for weekly (1 = Mon), `dom` for monthly (1 | 15 | 30), `name`, optional `desc`. User-added tasks use the same shape, live in `state.custom`, and get ids prefixed `custom-`. Always read tasks through `allTasks()`, never `TASKS` directly.
 
 ## Date rules (confirmed with the user)
 - Daily tasks appear on weekdays only.
@@ -22,8 +23,15 @@ Single-file static web app (`index.html`) that tracks recurring Ops, Compliance 
 ## Persistence
 `localStorage` under key `clime-tracker-v1`:
 ```json
-{ "done": { "YYYY-MM-DD|taskId": 1 }, "adhoc": [ { "ts", "task", "date", "note", "closed" } ], "teams": { "ops": true, "comp": true, "cs": true } }
+{
+  "done": { "YYYY-MM-DD|taskId": 1 },
+  "adhoc": [ { "ts", "task", "date", "note", "closed" } ],
+  "teams": { "ops": true, "comp": true, "cs": true },
+  "custom": [ { "id": "custom-…", "team", "freq", "dow"?, "dom"?, "name", "desc"? } ],
+  "roles": { "taskId": { "a": "Accountable person", "r": "Responsible person" } }
+}
 ```
+`custom` and `roles` are optional so older exports still import. `fromStored()` normalises any stored or imported object. Deleting an added task also removes its ticks, roles and adhoc log entries.
 State is per browser. Export/import exists for handover. If shared team state is needed, a backend (or a hosted artifact with a DB) would replace this.
 
 ## Style notes
@@ -36,6 +44,6 @@ Push to a GitHub repo, enable Pages from the root of `main`. `index.html` is the
 
 ## Ideas not yet built
 - Public holidays (VIC)
-- Assignee per task / initials on tick
+- Initials on tick (who actually did it on the day; accountable / responsible per task now exists)
 - Shared state via a small backend
 - Notes per task per day
