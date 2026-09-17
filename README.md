@@ -6,12 +6,12 @@ See `CLAUDE.md` for the spec, date rules, data model and roadmap.
 
 ## Sharing the tracker between people (GitHub storage)
 
-Out of the box each browser keeps its own copy. To have one shared copy that everyone sees, the page can store its data as a JSON file in a GitHub repository. Every change becomes a commit, and the page checks for new commits on a timer (10 minutes by default), whenever you come back to the tab, and right after your own changes.
+Out of the box each browser keeps its own copy. To have one shared copy that everyone sees, the page can store its data as a JSON file in a GitHub repository. Every change becomes a commit. While the tab is visible the page asks GitHub about once a minute whether the file has a new commit (a cheap conditional request that GitHub does not count against rate limits), does a full sync on a timer (10 minutes by default), and also syncs whenever you come back to the tab, right after your own changes, and when you press Sync now. Other people's changes normally show up within a minute.
 
 Setup, once per person:
 
 1. Create a fine-grained personal access token at GitHub: Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token. Under Repository access choose only this repository. Under Repository permissions set Contents to Read and write. Pick an expiry you are comfortable with.
-2. Open the tracker, click Set up under Shared storage in the left rail, enter the repository as `owner/name`, your name, and the token, then Save and connect.
+2. Open the tracker, click Set up under Shared storage in the left rail, enter the repository as `owner/name`, your name, and the token, then Save and connect. Do this in every browser you use; the token is stored per browser. The rail shows "Synced" when the connection works and "Not connected" otherwise.
 
 Notes:
 

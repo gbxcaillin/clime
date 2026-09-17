@@ -222,8 +222,9 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
       <label for="syToken">GitHub personal access token</label>
       <input id="syToken" type="password" placeholder="github_pat_..." autocomplete="off">
       <p class="note" style="margin:4px 0 0">A fine-grained token with access to only this repository and the Contents permission set to Read and write. It is stored in this browser only. Anyone with the token can commit to the repository, so treat it like a password.</p>
-      <label for="syMin">Check for changes every (minutes)</label>
+      <label for="syMin">Full sync every (minutes)</label>
       <input id="syMin" type="number" min="1" max="120" value="10">
+      <p class="note" style="margin:4px 0 0">While the tab is visible the page also asks GitHub about once a minute whether the file has a new commit, so other people's changes normally appear within a minute.</p>
       <div class="actions" style="display:flex;gap:14px;align-items:center;margin-top:14px">
         <button class="submit" type="submit" style="margin:0">Save and connect</button>
         <button class="cancel" type="button" id="syCancel" style="margin:0">Cancel</button>
@@ -910,7 +911,8 @@ try{ Object.assign(sync, JSON.parse(localStorage.getItem(SYNC_KEY))||{}); }catch
 let base=null; // { sha, data } as last seen on GitHub
 try{ base=JSON.parse(localStorage.getItem(BASE_KEY)); }catch(e){}
 let syncState={ kind:"off", text:"Not connected", at:0 };
-let syncTimer=null, pollTimer=null, syncing=false, syncAgain=false, pendingRender=false, commits=null;
+let syncTimer=null, pollTimer=null, checkTimer=null, syncing=false, syncAgain=false, pendingRender=false, commits=null, etag=null;
+const CHECK_MS=60000; // quick conditional check for new commits (a 304 answer is free of GitHub rate limits)
 const syncOn=()=>!!(sync.owner&&sync.repo&&sync.token);
 // compare ignoring object key order, so a copy that came back from GitHub is not mistaken for a change
 const canon=v=>Array.isArray(v)?"["+v.map(canon).join(",")+"]":(v&&typeof v==="object")?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canon(v[k])).join(",")+"}":JSON.stringify(v===undefined?null:v);
@@ -926,13 +928,13 @@ async function gh(method,url,body,extraHeaders){
   const headers={ "Accept":"application/vnd.github+json", "Authorization":"Bearer "+sync.token, "X-GitHub-Api-Version":"2022-11-28", ...(extraHeaders||{}) };
   if(body) headers["Content-Type"]="application/json";
   const res=await fetch("https://api.github.com"+url,{ method, headers, body: body?JSON.stringify(body):undefined, cache:"no-store" });
-  if(res.status===304) return { status:304, json:null };
+  if(res.status===304) return { status:304, json:null, etag:res.headers.get("etag") };
   let json=null; try{ json=await res.json(); }catch(e){}
   if(!res.ok){
     const err=new Error(res.status===401?"Token rejected. Check it has not expired.":res.status===404?"Not found. Check the repository name, branch and token access.":(json&&json.message)||("GitHub error "+res.status));
     err.status=res.status; throw err;
   }
-  return { status:res.status, json };
+  return { status:res.status, json, etag:res.headers.get("etag") };
 }
 
 /* three-way merge helpers: apply what changed locally since base onto the remote copy */
@@ -1013,14 +1015,15 @@ function scheduleSync(){
 }
 
 // re-render without pulling the rug from under someone typing a name or filling a form
+const editingField=()=>{ const a=document.activeElement; return !!(a&&a.closest&&a.closest(".main")&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.type!=="checkbox"&&a.isConnected); };
 function rerenderSafely(){
-  const a=document.activeElement;
-  if(a&&a.closest&&a.closest(".main")&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.type!=="checkbox"){
-    if(!pendingRender){ pendingRender=true; a.addEventListener("blur",()=>{ pendingRender=false; renderAll(); },{once:true}); }
-    return;
-  }
-  renderAll();
+  if(editingField()){ pendingRender=true; return; }
+  pendingRender=false; renderAll();
 }
+// a postponed render runs as soon as the field is left, or if it disappears without a blur event
+const flushRender=()=>{ if(pendingRender&&!editingField()){ pendingRender=false; renderAll(); } };
+document.addEventListener("focusout",()=>setTimeout(flushRender,0));
+setInterval(flushRender,2000);
 
 async function ensureBranch(){
   try{ await gh("GET",repoPath()+"/git/ref/heads/"+encodeURIComponent(sync.branch)); return; }catch(e){ if(e.status!==404) throw e; }
@@ -1034,10 +1037,17 @@ async function runSync(reason){
   if(syncing){ syncAgain=true; return; }
   syncing=true; setSync("busy","Syncing");
   try{
-    // 1. what is on GitHub right now
+    // 1. what is on GitHub right now. With nothing changed here since the last sync, ask conditionally:
+    //    a 304 means the file is unchanged too, so there is nothing to do.
     let remote=null, sha=null;
-    try{ const r=await gh("GET",contentsUrl()+"?ref="+encodeURIComponent(sync.branch)); sha=r.json.sha; remote=pickShared(fromStored(JSON.parse(b64dec(r.json.content)))); }
-    catch(e){ if(e.status!==404) throw e; }
+    const nothingLocal=!!(base&&base.data&&same(pickShared(state),base.data));
+    const cond=nothingLocal&&etag&&!syncTimer ? { "If-None-Match":etag } : null;
+    try{
+      const r=await gh("GET",contentsUrl()+"?ref="+encodeURIComponent(sync.branch),null,cond);
+      if(r.status===304){ setSync("ok","Synced"); return; }
+      etag=r.etag||null; sha=r.json.sha; remote=pickShared(fromStored(JSON.parse(b64dec(r.json.content))));
+    }
+    catch(e){ if(e.status!==404) throw e; etag=null; }
     // 2. merge
     const local=pickShared(state);
     const merged=pickShared(threeWay(base&&base.data, local, remote));
@@ -1047,7 +1057,7 @@ async function runSync(reason){
       const message=`${sync.name||"Tracker"}: ${describeChanges(remote,merged)}`;
       const file={ version:1, updatedAt:new Date().toISOString(), updatedBy:sync.name||"", ...merged };
       const body={ message, content:b64enc(JSON.stringify(file,null,1)), branch:sync.branch }; if(sha) body.sha=sha;
-      try{ const put=await gh("PUT",contentsUrl(),body); sha=put.json.content.sha; }
+      try{ const put=await gh("PUT",contentsUrl(),body); sha=put.json.content.sha; etag=null; }
       catch(e){ if(e.status===409||e.status===422){ syncAgain=true; setSync("busy","Someone else just committed, retrying"); return; } throw e; }
     }
     // 4. adopt the merged copy locally and remember it as base
@@ -1120,9 +1130,11 @@ $("#syncForm").onsubmit=e=>{
 };
 
 function startPolling(){
-  clearInterval(pollTimer); pollTimer=null;
+  clearInterval(pollTimer); pollTimer=null; clearInterval(checkTimer); checkTimer=null;
   if(!syncOn()) return;
   pollTimer=setInterval(()=>runSync("timer"),(sync.minutes||10)*60000);
+  clearInterval(checkTimer);
+  checkTimer=setInterval(()=>{ if(document.visibilityState==="visible"&&!syncing) runSync("check"); },CHECK_MS);
 }
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&syncOn()&&Date.now()-syncState.at>60000) runSync("focus"); });
 window.addEventListener("online",()=>{ if(syncOn()) runSync("online"); });
