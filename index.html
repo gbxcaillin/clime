@@ -44,6 +44,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .progress{margin-top:auto}
 .bar{height:6px;background:#2a3441;border-radius:3px;overflow:hidden;margin-top:8px}
 .bar i{display:block;height:100%;background:#6b8dd6;width:0;transition:width .25s}
+.sync .syncline{display:flex;align-items:center;gap:8px;font-size:13px;color:#e8edf3;line-height:1.35}
+.sync .dot{width:9px;height:9px;border-radius:50%;background:#5a6676;flex:none}
+.sync .dot.ok{background:#4ade80}.sync .dot.busy{background:#facc15}.sync .dot.error{background:#f87171}.sync .dot.pending{background:#6b8dd6}
+dialog{border:0;border-radius:10px;padding:0;max-width:520px;width:calc(100% - 32px);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(28,36,48,.55)}
+dialog .form{border:0}
+dialog h3{margin:0 0 6px;font-family:var(--cond);font-size:18px;font-weight:600}
+.commits{display:flex;flex-direction:column;gap:6px}
+.commit{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:start}
+.commit .msg{font-weight:500}
+.commit .meta{font-size:12px;color:var(--ink-2);grid-column:1/-1}
+.commit a{font-size:12px;color:var(--today);white-space:nowrap}
 .railfoot{display:flex;gap:10px;flex-wrap:wrap}
 .railfoot button{font-size:12px;color:#aeb8c6;text-decoration:underline;text-underline-offset:3px;padding:0}
 .railfoot button:hover{color:#fff}
@@ -180,12 +192,45 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
       <div id="progText">0 of 0</div>
       <div class="bar"><i id="progBar"></i></div>
     </div>
+    <div class="sync">
+      <h2>Shared storage</h2>
+      <div class="syncline"><span class="dot" id="syncDot"></span><span id="syncText">Not connected</span></div>
+      <div class="datenav">
+        <button id="syncNow">Sync now</button>
+        <button id="syncSetup">Set up</button>
+      </div>
+    </div>
     <div class="railfoot">
       <button id="exportBtn">Export data</button>
       <button id="importBtn">Import</button>
       <input type="file" id="importFile" accept="application/json" hidden>
     </div>
   </aside>
+
+  <dialog id="syncDlg">
+    <form class="form" id="syncForm" autocomplete="off">
+      <h3>Shared storage on GitHub</h3>
+      <p class="note" style="margin:0 0 8px">The tracker keeps one JSON file in a GitHub repository. Everyone who connects reads and writes that file, each change becomes a commit, and the page checks for new commits on a timer, when you return to the tab, and after your own changes.</p>
+      <label for="syRepo">Repository (owner/name)</label>
+      <input id="syRepo" placeholder="gbxcaillin/clime" required>
+      <label for="syBranch">Branch for the data file</label>
+      <input id="syBranch" value="tracker-data" required>
+      <label for="syPath">File path</label>
+      <input id="syPath" value="data/tracker.json" required>
+      <label for="syName">Your name (shown on commits)</label>
+      <input id="syName" list="peopleList" maxlength="60" placeholder="Sam">
+      <label for="syToken">GitHub personal access token</label>
+      <input id="syToken" type="password" placeholder="github_pat_..." autocomplete="off">
+      <p class="note" style="margin:4px 0 0">A fine-grained token with access to only this repository and the Contents permission set to Read and write. It is stored in this browser only. Anyone with the token can commit to the repository, so treat it like a password.</p>
+      <label for="syMin">Check for changes every (minutes)</label>
+      <input id="syMin" type="number" min="1" max="120" value="10">
+      <div class="actions" style="display:flex;gap:14px;align-items:center;margin-top:14px">
+        <button class="submit" type="submit" style="margin:0">Save and connect</button>
+        <button class="cancel" type="button" id="syCancel" style="margin:0">Cancel</button>
+        <button class="cancel" type="button" id="syDisconnect" style="margin:0 0 0 auto;color:#b91c1c">Disconnect</button>
+      </div>
+    </form>
+  </dialog>
 
   <main class="main">
     <div class="tabs" role="tablist">
@@ -194,6 +239,8 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
       <button role="tab" aria-selected="false" data-view="adhoc">Adhoc log</button>
       <button role="tab" aria-selected="false" data-view="ref">Schedule</button>
       <button role="tab" aria-selected="false" data-view="tasks">Tasks</button>
+      <button role="tab" aria-selected="false" data-view="activity">Activity</button>
+      <button role="tab" aria-selected="false" data-view="admin">Admin</button>
     </div>
 
     <section class="view on" id="view-day"></section>
@@ -229,6 +276,34 @@ table.ref td:first-child{width:130px;color:var(--ink-2);font-weight:500}
     <section class="view" id="view-ref">
       <div class="tblwrap"><table class="ref" id="refTable"></table></div>
       <p class="note" style="margin-top:14px">Date rules: the 1st and 15th move to the next business day if they land on a weekend. The 30th uses the last business day of the month when the 30th is a weekend or the month has no 30th. Fortnightly items are shown on the 1st and 15th. Daily items appear on weekdays only.</p>
+    </section>
+
+    <section class="view" id="view-admin">
+      <form class="form" id="adminLock" style="max-width:380px" autocomplete="off">
+        <h3>Admin</h3>
+        <label for="adminPw">Password</label>
+        <input id="adminPw" type="password" autocomplete="current-password">
+        <button class="submit" type="submit">Unlock</button>
+      </form>
+      <div id="adminPanel" hidden>
+        <div class="calhead" style="flex-wrap:wrap">
+          <h3 style="min-width:0">Changelog</h3>
+          <input id="logFilter" placeholder="Filter by name, task or event" style="border:1px solid var(--line);border-radius:6px;padding:5px 10px;font:inherit;font-size:13px;min-width:220px">
+          <button id="logCsv">Download CSV</button>
+          <button id="adminLockBtn" style="margin-left:auto">Lock</button>
+        </div>
+        <p class="note" style="margin:0 0 14px" id="logNote"></p>
+        <div class="tblwrap"><table class="ref" id="logTable"></table></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-activity">
+      <div class="calhead">
+        <h3 style="min-width:0">Recent commits</h3>
+        <button id="activityRefresh">Refresh</button>
+        <a id="activityLink" href="#" target="_blank" rel="noopener" style="font-size:13px;margin-left:auto" hidden>Open the data file on GitHub</a>
+      </div>
+      <div id="activity"></div>
     </section>
 
     <section class="view" id="view-tasks">
@@ -399,6 +474,7 @@ function tasksForDay(d){
 
 /* ---------- state ---------- */
 const LS="clime-tracker-v1";
+const LOG_MAX=3000;
 let state = load();
 // normalise a stored or imported state object; custom tasks and roles are optional for older exports
 // a function declaration so it is hoisted: load() runs before this point in the file
@@ -412,18 +488,32 @@ function fromStored(s){
   const hidden=Array.isArray(s.hidden) ? s.hidden.filter(id=>TASKS.some(x=>x.id===id)) : [];
   const people=[];
   if(Array.isArray(s.people)) for(const p of s.people){ const n=String(p||"").trim(); if(n && !people.some(x=>x.toLowerCase()===n.toLowerCase())) people.push(n); }
-  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles, overrides, hidden, people};
+  const log=Array.isArray(s.log) ? s.log.filter(e=>e&&e.id&&e.t&&e.ev).slice(-LOG_MAX) : [];
+  return {done:s.done||{}, adhoc:s.adhoc||[], teams:s.teams||{ops:true,comp:true,cs:true}, custom, roles, overrides, hidden, people, log};
 }
 function load(){
   try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.done) return fromStored(s); }catch(e){}
-  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}, overrides:{}, hidden:[], people:[]};
+  return {done:{}, adhoc:[], teams:{ops:true,comp:true,cs:true}, custom:[], roles:{}, overrides:{}, hidden:[], people:[], log:[]};
 }
-function save(){ try{ localStorage.setItem(LS,JSON.stringify(state)); }catch(e){ toast("Could not save. Check browser storage settings."); } }
+function persist(){ try{ localStorage.setItem(LS,JSON.stringify(state)); }catch(e){ toast("Could not save. Check browser storage settings."); } }
+// every local change is written to this browser and, when shared storage is connected, queued for a commit
+function save(){ persist(); if(typeof scheduleSync==="function") scheduleSync(); }
 const doneKey=(k,id)=>`${k}|${id}`;
 const isDone=(k,id)=>!!state.done[doneKey(k,id)];
 // a done entry is 1 (ticked, no name yet) or the name of the person who did it
 const doneBy=(k,id)=>{ const v=state.done[doneKey(k,id)]; return typeof v==="string" ? v : ""; };
 function setDone(k,id,v,name){ if(v) state.done[doneKey(k,id)]=(name&&name.trim())||1; else delete state.done[doneKey(k,id)]; save(); }
+
+/* changelog: every change is recorded with a time and who made it (the name from the shared storage settings,
+   or the name given on a tick). Synced with the rest of the shared state and shown on the Admin tab. */
+function logEvent(ev,what,extra){
+  extra=extra||{};
+  const who=extra.who||(typeof sync!=="undefined"&&sync&&sync.name)||"";
+  const e={ id:Date.now().toString(36)+Math.random().toString(36).slice(2,7), t:new Date().toISOString(), who, ev, what };
+  if(extra.date) e.date=extra.date; if(extra.task) e.task=extra.task;
+  state.log.push(e);
+  if(state.log.length>LOG_MAX) state.log=state.log.slice(-LOG_MAX);
+}
 
 /* people list: every name used on a tick or as accountable / responsible, so it can be picked next time */
 const peopleSorted=()=>state.people.slice().sort((a,b)=>a.localeCompare(b));
@@ -436,7 +526,7 @@ function renderPeople(){
   const box=$("#peopleBox");
   if(!state.people.length){ box.innerHTML=`<span class="muted">No names yet. Names are remembered when someone ticks a task or is set as accountable or responsible.</span>`; return; }
   box.innerHTML=peopleSorted().map(p=>`<span class="person">${esc(p)}<button type="button" data-name="${esc(p)}" aria-label="Remove ${esc(p)} from the list" title="Remove from list">×</button></span>`).join("");
-  box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ state.people=state.people.filter(p=>p!==b.dataset.name); save(); renderPeople(); toast("Removed from the list"); });
+  box.querySelectorAll("button").forEach(b=>b.onclick=()=>{ state.people=state.people.filter(p=>p!==b.dataset.name); logEvent("people-remove",b.dataset.name); save(); renderPeople(); toast("Removed from the list"); });
 }
 
 // the "Done by" line under a ticked task: shows the name, or lets the person pick or type one
@@ -468,7 +558,7 @@ function attachDoneBy(row,t,k){
     onBtn(by.querySelector(".cancel"),()=>{ mode="view"; draw(); });
     if(focus) inp.focus();
   };
-  const commit=name=>{ name=name.trim(); rememberPerson(name); setDone(k,t.id,true,name); mode="view"; draw(); renderPeople(); };
+  const commit=name=>{ name=name.trim(); rememberPerson(name); logEvent("done-by",t.name,{who:name,task:t.id,date:k}); setDone(k,t.id,true,name); mode="view"; draw(); renderPeople(); };
   draw();
   return { refresh:()=>{ mode="view"; draw(); }, prompt:()=>{ mode=state.people.length?"pick":"type"; draw(true); } };
 }
@@ -514,6 +604,7 @@ function taskRow(t,k){
   row.innerHTML=`<input type="checkbox" ${done?"checked":""}><span class="stripe"></span><span><div class="name">${esc(t.name)}</div>${t.desc?`<div class="desc">${esc(t.desc)}</div>`:""}${who?`<div class="who">${esc(who)}</div>`:""}<div class="by"></div></span><span class="tag">${TEAMS[t.team].name}${t.freq!=="daily"?" · "+freqLabel(t):""}</span>`;
   const by=attachDoneBy(row,t,k);
   row.querySelector("input").onchange=e=>{
+    logEvent(e.target.checked?"tick":"untick",t.name,{task:t.id,date:k});
     setDone(k,t.id,e.target.checked);
     row.classList.toggle("done",e.target.checked);
     // ticking asks for the person's name straight away; unticking clears the name line
@@ -609,8 +700,8 @@ function renderAdhoc(){
     const el=document.createElement("div"); el.className="entry"+(e.closed?" closed":"");
     el.innerHTML=`<span class="stripe" style="background:var(--${TEAMS[t.team].chip})"></span><span><div class="when">${fmtLong(d)}${e.closed?` · closed ${fmtLong(fromKey(e.closed))}`:""}</div><div class="what">${esc(t.name)}</div>${who?`<div class="when">${esc(who)}</div>`:""}${e.note?`<div class="memo"></div>`:""}${e.closed?"":`<button class="close">Mark closed</button>`}</span><button class="x" aria-label="Delete entry">Delete</button>`;
     if(e.note) el.querySelector(".memo").textContent=e.note;
-    const cb=el.querySelector(".close"); if(cb) cb.onclick=()=>{ e.closed=key(today); save(); renderAdhoc(); };
-    el.querySelector(".x").onclick=()=>{ if(confirm("Delete this log entry?")){ state.adhoc=state.adhoc.filter(x=>x.ts!==e.ts); save(); renderAdhoc(); } };
+    const cb=el.querySelector(".close"); if(cb) cb.onclick=()=>{ e.closed=key(today); logEvent("adhoc-close",t.name,{task:t.id,date:e.date}); save(); renderAdhoc(); };
+    el.querySelector(".x").onclick=()=>{ if(confirm("Delete this log entry?")){ state.adhoc=state.adhoc.filter(x=>x.ts!==e.ts); logEvent("adhoc-delete",t.name,{task:t.id,date:e.date}); save(); renderAdhoc(); } };
     log.appendChild(el);
   });
 }
@@ -618,6 +709,7 @@ $("#ahAdd").onclick=()=>{
   const date=$("#ahDate").value; if(!date){ toast("Pick a date."); return; }
   if(!$("#ahTask").value){ toast("No adhoc items defined. Add one on the Tasks tab."); return; }
   state.adhoc.push({ts:Date.now(), task:$("#ahTask").value, date, note:$("#ahNote").value.trim(), closed:null});
+  logEvent("adhoc-add",(findTask($("#ahTask").value)||{}).name||$("#ahTask").value,{task:$("#ahTask").value,date});
   save(); $("#ahNote").value=""; renderAdhoc(); toast("Added to log");
 };
 
@@ -670,13 +762,14 @@ function renderTasks(){
   const hiddenList=hiddenTasks();
   if(!hiddenList.length){ hid.innerHTML=""; return; }
   hid.innerHTML=`Removed standard tasks: `+hiddenList.map(t=>`<span>${esc(t.name)} <button type="button" class="restore" data-id="${esc(t.id)}" style="color:var(--today);text-decoration:underline;text-underline-offset:3px;padding:0;font-size:13px">Restore</button></span>`).join(", ");
-  hid.querySelectorAll("button.restore").forEach(b=>b.onclick=()=>{ state.hidden=state.hidden.filter(id=>id!==b.dataset.id); save(); renderAll(); toast("Task restored"); });
+  hid.querySelectorAll("button.restore").forEach(b=>b.onclick=()=>{ state.hidden=state.hidden.filter(id=>id!==b.dataset.id); logEvent("task-restore",(findTask(b.dataset.id)||{}).name||b.dataset.id,{task:b.dataset.id}); save(); renderAll(); toast("Task restored"); });
 }
 
 function resetBuiltin(id){
   const t=TASKS.find(x=>x.id===id); if(!t||!isOverridden(id)) return;
   if(!confirm(`Reset "${findTask(id).name}" to its standard definition (${t.name}, ${TEAMS[t.team].name}, ${freqLabel(t)})?`)) return;
   delete state.overrides[id];
+  logEvent("task-reset",t.name,{task:id});
   if(editingId===id) resetTaskForm();
   save(); renderAll(); toast("Task reset");
 }
@@ -746,6 +839,7 @@ $("#taskForm").onsubmit=e=>{
     msg=i>=0?"Task updated":"Task added";
   }
   setRoles(def.id,a,r);
+  logEvent(msg==="Task added"?"task-add":"task-edit",def.name+(a||r?` (A: ${a.trim()||"none"}, R: ${r.trim()||"none"})`:""),{task:def.id});
   save(); resetTaskForm(); renderAll(); toast(msg);
 };
 
@@ -757,24 +851,28 @@ function deleteTask(id){
     delete state.roles[id];
     for(const k of Object.keys(state.done)) if(k.endsWith("|"+id)) delete state.done[k];
     state.adhoc=state.adhoc.filter(e=>e.task!==id);
+    logEvent("task-delete",t.name,{task:id});
     if(editingId===id) resetTaskForm();
     save(); renderAll(); toast("Task deleted");
   } else {
     // standard tasks are hidden rather than deleted, so ticks and log entries survive a restore
     if(!confirm(`Remove "${t.name}" from the tracker? You can restore it later from the Tasks tab.`)) return;
     if(!state.hidden.includes(id)) state.hidden.push(id);
+    logEvent("task-remove",t.name,{task:id});
     if(editingId===id) resetTaskForm();
     save(); renderAll(); toast("Task removed");
   }
 }
 
-function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); renderTasks(); renderPeople(); }
+function renderAll(){ renderRail(); renderDay(); renderCal(); renderAdhoc(); renderRef(); renderTasks(); renderPeople(); renderSync(); if(typeof renderAdmin==="function"&&$("#view-admin").classList.contains("on")) renderAdmin(); }
 
 /* ---------- navigation ---------- */
 function switchView(v){
   document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
   document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id==="view-"+v));
   if(v==="cal"){ calMonth=new Date(selected.getFullYear(),selected.getMonth(),1); renderCal(); }
+  if(v==="activity") loadCommits();
+  if(v==="admin"){ renderAdmin(); if(adminUnlocked()&&syncOn()&&!commits) loadCommits().then(renderAdmin); }
 }
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 $("#prevDay").onclick=()=>{ selected.setDate(selected.getDate()-1); selected=new Date(selected); renderAll(); };
@@ -793,14 +891,291 @@ $("#importBtn").onclick=()=>$("#importFile").click();
 $("#importFile").onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const r=new FileReader();
-  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s||!s.done) throw 0; const teams=state.teams; state=fromStored(s); if(!s.teams) state.teams=teams; resetTaskForm(); save(); renderAll(); toast("Data imported"); }catch(_){ toast("That file is not a tracker export."); } };
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s||!s.done) throw 0; const teams=state.teams; state=fromStored(s); if(!s.teams) state.teams=teams; logEvent("import",f.name); resetTaskForm(); save(); renderAll(); toast("Data imported"); }catch(_){ toast("That file is not a tracker export."); } };
   r.readAsText(f); e.target.value="";
 };
 
 let toastT; function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2200); }
 
+/* ---------- shared storage on GitHub ----------
+   One JSON file in a repository holds the shared sections of state. Each browser keeps a copy of the
+   last version it saw on GitHub ("base"). A sync fetches the file, three-way merges base / local / remote
+   (local edits win on the same key), commits the result if it differs from what is on GitHub, and adopts
+   it locally. Team filters stay per browser. */
+const SYNC_KEY="clime-sync-v1", BASE_KEY="clime-sync-base-v1";
+const SHARED=["done","adhoc","custom","roles","overrides","hidden","people","log"];
+const SYNC_DEBOUNCE_MS=2500;
+let sync={ owner:"", repo:"", branch:"tracker-data", path:"data/tracker.json", token:"", name:"", minutes:10 };
+try{ Object.assign(sync, JSON.parse(localStorage.getItem(SYNC_KEY))||{}); }catch(e){}
+let base=null; // { sha, data } as last seen on GitHub
+try{ base=JSON.parse(localStorage.getItem(BASE_KEY)); }catch(e){}
+let syncState={ kind:"off", text:"Not connected", at:0 };
+let syncTimer=null, pollTimer=null, syncing=false, syncAgain=false, pendingRender=false, commits=null;
+const syncOn=()=>!!(sync.owner&&sync.repo&&sync.token);
+// compare ignoring object key order, so a copy that came back from GitHub is not mistaken for a change
+const canon=v=>Array.isArray(v)?"["+v.map(canon).join(",")+"]":(v&&typeof v==="object")?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canon(v[k])).join(",")+"}":JSON.stringify(v===undefined?null:v);
+const same=(a,b)=>canon(a)===canon(b);
+const pickShared=s=>{ const o={}; for(const k of SHARED) o[k]=s[k]; return o; };
+const b64enc=s=>btoa(unescape(encodeURIComponent(s)));
+const b64dec=s=>decodeURIComponent(escape(atob(String(s).replace(/\n/g,""))));
+const repoPath=()=>`/repos/${encodeURIComponent(sync.owner)}/${encodeURIComponent(sync.repo)}`;
+const contentsUrl=()=>repoPath()+"/contents/"+sync.path.split("/").map(encodeURIComponent).join("/");
+const ago=t=>{ const s=Math.max(0,(Date.now()-new Date(t))/1000); if(s<45) return "just now"; if(s<3600) return Math.round(s/60)+" min ago"; if(s<86400) return Math.round(s/3600)+" h ago"; return Math.round(s/86400)+" d ago"; };
+
+async function gh(method,url,body,extraHeaders){
+  const headers={ "Accept":"application/vnd.github+json", "Authorization":"Bearer "+sync.token, "X-GitHub-Api-Version":"2022-11-28", ...(extraHeaders||{}) };
+  if(body) headers["Content-Type"]="application/json";
+  const res=await fetch("https://api.github.com"+url,{ method, headers, body: body?JSON.stringify(body):undefined, cache:"no-store" });
+  if(res.status===304) return { status:304, json:null };
+  let json=null; try{ json=await res.json(); }catch(e){}
+  if(!res.ok){
+    const err=new Error(res.status===401?"Token rejected. Check it has not expired.":res.status===404?"Not found. Check the repository name, branch and token access.":(json&&json.message)||("GitHub error "+res.status));
+    err.status=res.status; throw err;
+  }
+  return { status:res.status, json };
+}
+
+/* three-way merge helpers: apply what changed locally since base onto the remote copy */
+function mergeMaps(b,l,r){
+  b=b||{}; l=l||{}; r=r||{};
+  const out={...r};
+  for(const k of new Set([...Object.keys(b),...Object.keys(l)])){
+    if(same(b[k],l[k])) continue;          // untouched here, keep whatever remote has
+    if(k in l) out[k]=l[k]; else delete out[k];
+  }
+  return out;
+}
+function mergeById(b,l,r,idOf){
+  const toMap=a=>{ const m={}; for(const x of (a||[])) if(x) m[idOf(x)]=x; return m; };
+  const merged=mergeMaps(toMap(b),toMap(l),toMap(r));
+  const out=[], seen=new Set();
+  for(const id of [...(r||[]).map(idOf),...Object.keys(merged)]){ if(seen.has(id)||!(id in merged)) continue; seen.add(id); out.push(merged[id]); }
+  return out;
+}
+function mergeSets(b,l,r){
+  const B=new Set(b||[]), L=new Set(l||[]);
+  const out=(r||[]).filter(x=>!(B.has(x)&&!L.has(x)));   // removed locally
+  for(const x of L) if(!B.has(x)&&!out.includes(x)) out.push(x); // added locally
+  return out;
+}
+function threeWay(b,l,r){
+  b=b||{}; r=r||{};
+  return {
+    done:mergeMaps(b.done,l.done,r.done),
+    roles:mergeMaps(b.roles,l.roles,r.roles),
+    overrides:mergeMaps(b.overrides,l.overrides,r.overrides),
+    custom:mergeById(b.custom,l.custom,r.custom,x=>x.id),
+    adhoc:mergeById(b.adhoc,l.adhoc,r.adhoc,x=>String(x.ts)),
+    hidden:mergeSets(b.hidden,l.hidden,r.hidden),
+    people:mergeSets(b.people,l.people,r.people),
+    log:mergeById(b.log,l.log,r.log,x=>x.id).sort((x,y)=>String(x.t).localeCompare(String(y.t))).slice(-LOG_MAX)
+  };
+}
+
+// short, human commit message: what this commit changes compared with the file on GitHub
+function describeChanges(prev,next){
+  prev=prev||{ done:{}, adhoc:[], custom:[], roles:{}, overrides:{}, hidden:[], people:[], log:[] };
+  const parts=[];
+  const nameOf=id=>{ const t=findTask(id)||TASKS.find(x=>x.id===id); return t?t.name:id; };
+  const ticked=Object.keys(next.done).filter(k=>!(k in prev.done)).map(k=>nameOf(k.split("|")[1]));
+  const renamed=Object.keys(next.done).filter(k=>k in prev.done&&!same(prev.done[k],next.done[k])).length;
+  const unticked=Object.keys(prev.done).filter(k=>!(k in next.done)).length;
+  if(ticked.length) parts.push("ticked "+(ticked.length<=3?ticked.join(", "):ticked.length+" tasks"));
+  if(renamed) parts.push("updated who did "+renamed);
+  if(unticked) parts.push("unticked "+unticked);
+  const ad=next.adhoc.length-prev.adhoc.length; if(ad>0) parts.push(`logged ${ad} adhoc`); if(ad<0) parts.push(`removed ${-ad} adhoc`);
+  if(ad===0&&!same(prev.adhoc,next.adhoc)) parts.push("updated adhoc log");
+  const defs=[["custom",x=>x.id],["overrides",null],["hidden",null],["roles",null]].filter(([k,idOf])=>!same(prev[k],next[k])).length;
+  if(defs) parts.push("changed task settings");
+  if(!same(prev.people,next.people)&&!parts.length) parts.push("updated people list");
+  if(!parts.length&&!same(prev.log,next.log)) parts.push("changelog");
+  return parts.join(", ")||"update";
+}
+
+function setSync(kind,text){ syncState={kind,text,at:Date.now()}; renderSync(); }
+function renderSync(){
+  const dot=$("#syncDot"), txt=$("#syncText"); if(!dot) return;
+  let kind=syncState.kind, text=syncState.text;
+  if(!syncOn()){ kind="off"; text="Not connected"; }
+  else if(kind==="ok"){ text=`Synced ${ago(syncState.at)}`+(syncTimer?" · changes pending":""); }
+  dot.className="dot "+(syncTimer&&kind==="ok"?"pending":kind);
+  txt.textContent=text;
+  $("#syncSetup").textContent=syncOn()?"Settings":"Set up";
+  $("#syncNow").disabled=!syncOn();
+}
+setInterval(renderSync,30000);
+
+function scheduleSync(){
+  if(!syncOn()) return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>{ syncTimer=null; runSync("change"); },SYNC_DEBOUNCE_MS);
+  renderSync();
+}
+
+// re-render without pulling the rug from under someone typing a name or filling a form
+function rerenderSafely(){
+  const a=document.activeElement;
+  if(a&&a.closest&&a.closest(".main")&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.type!=="checkbox"){
+    if(!pendingRender){ pendingRender=true; a.addEventListener("blur",()=>{ pendingRender=false; renderAll(); },{once:true}); }
+    return;
+  }
+  renderAll();
+}
+
+async function ensureBranch(){
+  try{ await gh("GET",repoPath()+"/git/ref/heads/"+encodeURIComponent(sync.branch)); return; }catch(e){ if(e.status!==404) throw e; }
+  const repo=await gh("GET",repoPath());
+  const head=await gh("GET",repoPath()+"/git/ref/heads/"+encodeURIComponent(repo.json.default_branch));
+  await gh("POST",repoPath()+"/git/refs",{ ref:"refs/heads/"+sync.branch, sha:head.json.object.sha });
+}
+
+async function runSync(reason){
+  if(!syncOn()) return;
+  if(syncing){ syncAgain=true; return; }
+  syncing=true; setSync("busy","Syncing");
+  try{
+    // 1. what is on GitHub right now
+    let remote=null, sha=null;
+    try{ const r=await gh("GET",contentsUrl()+"?ref="+encodeURIComponent(sync.branch)); sha=r.json.sha; remote=pickShared(fromStored(JSON.parse(b64dec(r.json.content)))); }
+    catch(e){ if(e.status!==404) throw e; }
+    // 2. merge
+    const local=pickShared(state);
+    const merged=pickShared(threeWay(base&&base.data, local, remote));
+    // 3. commit if GitHub does not already have exactly this
+    if(!remote||!same(merged,remote)){
+      if(!remote) await ensureBranch();
+      const message=`${sync.name||"Tracker"}: ${describeChanges(remote,merged)}`;
+      const file={ version:1, updatedAt:new Date().toISOString(), updatedBy:sync.name||"", ...merged };
+      const body={ message, content:b64enc(JSON.stringify(file,null,1)), branch:sync.branch }; if(sha) body.sha=sha;
+      try{ const put=await gh("PUT",contentsUrl(),body); sha=put.json.content.sha; }
+      catch(e){ if(e.status===409||e.status===422){ syncAgain=true; setSync("busy","Someone else just committed, retrying"); return; } throw e; }
+    }
+    // 4. adopt the merged copy locally and remember it as base
+    const changed=!same(merged,local);
+    Object.assign(state,merged); persist();
+    base={ sha, data:JSON.parse(JSON.stringify(merged)) };
+    try{ localStorage.setItem(BASE_KEY,JSON.stringify(base)); }catch(e){}
+    setSync("ok","Synced");
+    if(changed){ rerenderSafely(); if(reason!=="connect") toast("Updated from GitHub"); }
+    if($("#view-activity").classList.contains("on")||$("#view-admin").classList.contains("on")||commits===null) loadCommits();
+  }catch(e){
+    setSync("error",(e&&e.message)||"Sync failed");
+    if(reason==="manual"||reason==="connect") toast(syncState.text);
+  }finally{
+    syncing=false;
+    if(syncAgain){ syncAgain=false; setTimeout(()=>runSync("retry"),1500); }
+  }
+}
+
+async function loadCommits(){
+  const box=$("#activity"), link=$("#activityLink");
+  if(!syncOn()){ box.innerHTML=`<div class="empty">Connect shared storage (left rail, Set up) to see who changed what.</div>`; link.hidden=true; return; }
+  link.href=`https://github.com/${sync.owner}/${sync.repo}/blob/${sync.branch}/${sync.path}`; link.hidden=false;
+  if(commits===null) box.innerHTML=`<div class="empty">Loading commits</div>`;
+  try{
+    const r=await gh("GET",repoPath()+`/commits?path=${encodeURIComponent(sync.path)}&sha=${encodeURIComponent(sync.branch)}&per_page=40`);
+    commits=(r.json||[]).map(c=>({ sha:c.sha, msg:(c.commit&&c.commit.message||"").split("\n")[0], who:(c.author&&c.author.login)||(c.commit&&c.commit.author&&c.commit.author.name)||"", when:c.commit&&c.commit.author&&c.commit.author.date, url:c.html_url }));
+  }catch(e){ box.innerHTML=`<div class="empty">Could not load commits: ${esc(e.message)}</div>`; return; }
+  if(!commits.length){ box.innerHTML=`<div class="empty">No commits yet. The first change anyone makes will create the data file.</div>`; return; }
+  if($("#view-admin").classList.contains("on")&&typeof renderAdmin==="function") renderAdmin();
+  box.innerHTML=`<div class="commits">`+commits.map(c=>`<div class="commit"><div class="msg">${esc(c.msg)}</div><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.sha.slice(0,7))}</a><div class="meta">${esc(c.who)}${c.when?` · ${ago(c.when)} · ${new Date(c.when).toLocaleString("en-AU")}`:""}</div></div>`).join("")+`</div>`;
+}
+$("#activityRefresh").onclick=()=>{ commits=null; loadCommits(); };
+
+/* settings dialog */
+const dlg=$("#syncDlg");
+function openSyncDialog(){
+  let guessRepo="";
+  if(location.hostname.endsWith(".github.io")){ const seg=location.pathname.split("/").filter(Boolean)[0]; if(seg) guessRepo=location.hostname.split(".")[0]+"/"+seg; }
+  $("#syRepo").value=sync.owner?`${sync.owner}/${sync.repo}`:guessRepo;
+  $("#syBranch").value=sync.branch||"tracker-data";
+  $("#syPath").value=sync.path||"data/tracker.json";
+  $("#syName").value=sync.name||"";
+  $("#syToken").value=sync.token||"";
+  $("#syMin").value=sync.minutes||10;
+  $("#syDisconnect").hidden=!syncOn();
+  dlg.showModal();
+}
+$("#syncSetup").onclick=openSyncDialog;
+$("#syCancel").onclick=()=>dlg.close();
+$("#syncNow").onclick=()=>{ clearTimeout(syncTimer); syncTimer=null; runSync("manual"); };
+$("#syDisconnect").onclick=()=>{
+  if(!confirm("Disconnect from shared storage? Your data stays in this browser and on GitHub; the page just stops syncing.")) return;
+  sync={ ...sync, token:"" }; base=null;
+  try{ localStorage.setItem(SYNC_KEY,JSON.stringify(sync)); localStorage.removeItem(BASE_KEY); }catch(e){}
+  clearTimeout(syncTimer); syncTimer=null; commits=null; startPolling(); dlg.close(); renderSync(); toast("Disconnected");
+};
+$("#syncForm").onsubmit=e=>{
+  e.preventDefault();
+  const m=$("#syRepo").value.trim().replace(/^https?:\/\/github\.com\//,"").replace(/\.git$/,"").match(/^([\w.-]+)\/([\w.-]+)\/?$/);
+  if(!m){ toast("Repository must look like owner/name"); $("#syRepo").focus(); return; }
+  const token=$("#syToken").value.trim(); if(!token){ toast("A token is needed to connect"); $("#syToken").focus(); return; }
+  const changedTarget=sync.owner!==m[1]||sync.repo!==m[2]||sync.branch!==$("#syBranch").value.trim()||sync.path!==$("#syPath").value.trim();
+  sync={ owner:m[1], repo:m[2], branch:$("#syBranch").value.trim()||"tracker-data", path:$("#syPath").value.trim().replace(/^\/+/,"")||"data/tracker.json", token, name:$("#syName").value.trim(), minutes:Math.min(120,Math.max(1,Number($("#syMin").value)||10)) };
+  if(changedTarget){ base=null; try{ localStorage.removeItem(BASE_KEY); }catch(e){} }
+  try{ localStorage.setItem(SYNC_KEY,JSON.stringify(sync)); }catch(e){}
+  rememberPerson(sync.name);
+  commits=null; dlg.close(); startPolling(); renderSync();
+  runSync("connect").then(()=>{ if(syncState.kind==="ok") toast("Connected to GitHub"); });
+};
+
+function startPolling(){
+  clearInterval(pollTimer); pollTimer=null;
+  if(!syncOn()) return;
+  pollTimer=setInterval(()=>runSync("timer"),(sync.minutes||10)*60000);
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&syncOn()&&Date.now()-syncState.at>60000) runSync("focus"); });
+window.addEventListener("online",()=>{ if(syncOn()) runSync("online"); });
+
+/* ---------- Admin: password-gated changelog ----------
+   The check runs in the browser against a SHA-256 hash, so it keeps casual users out of the log but is not
+   real security: anyone who can read the page source or the data file on GitHub can read the log. */
+const ADMIN_HASH="5cf145cdfbb9e630c20f2626165c84bbe5bb6cd93190483b517c2ec0fa6ce1ca";
+const ADMIN_KEY="clime-admin";
+const EV_LABEL={ tick:"Ticked", untick:"Unticked", "done-by":"Done by", "task-add":"Task added", "task-edit":"Task edited", "task-delete":"Task deleted", "task-remove":"Task removed", "task-restore":"Task restored", "task-reset":"Task reset", "adhoc-add":"Adhoc logged", "adhoc-close":"Adhoc closed", "adhoc-delete":"Adhoc entry deleted", "people-remove":"Name removed from list", import:"Data imported", commit:"Saved to GitHub" };
+async function sha256(text){
+  if(!(crypto&&crypto.subtle)) throw new Error("This browser cannot check the password here. Open the page over https.");
+  const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+const adminUnlocked=()=>{ try{ return sessionStorage.getItem(ADMIN_KEY)==="1"; }catch(e){ return false; } };
+function renderAdmin(){
+  const on=adminUnlocked();
+  $("#adminLock").hidden=on; $("#adminPanel").hidden=!on;
+  if(!on) return;
+  const q=($("#logFilter").value||"").trim().toLowerCase();
+  const rows=state.log.map(e=>({ t:e.t, who:e.who||"", ev:EV_LABEL[e.ev]||e.ev, what:(e.what||"")+(e.date?` (${e.date})`:""), link:"" }));
+  if(syncOn()&&commits) for(const c of commits) rows.push({ t:c.when||"", who:c.who||"", ev:EV_LABEL.commit, what:c.msg, link:c.url });
+  rows.sort((a,b)=>String(b.t).localeCompare(String(a.t)));
+  const shown=rows.filter(r=>!q||`${r.who} ${r.ev} ${r.what}`.toLowerCase().includes(q)).slice(0,500);
+  $("#logNote").textContent=`${rows.length} entries`+(syncOn()?" including GitHub commits":" (connect shared storage to include GitHub commits)")+(shown.length<rows.length?`, showing ${shown.length}`:"")+". Times are local.";
+  $("#logTable").innerHTML=`<tr><th>When</th><th>Who</th><th>Event</th><th>Details</th></tr>`+shown.map(r=>`<tr><td style="white-space:nowrap">${esc(r.t?new Date(r.t).toLocaleString("en-AU"):"")}</td><td>${esc(r.who)||'<span class="muted">unknown</span>'}</td><td>${esc(r.ev)}</td><td>${esc(r.what)}${r.link?` <a href="${esc(r.link)}" target="_blank" rel="noopener" style="font-size:12px">view</a>`:""}</td></tr>`).join("");
+  if(!shown.length) $("#logTable").innerHTML+=`<tr><td colspan="4" class="muted">Nothing logged yet.</td></tr>`;
+}
+$("#adminLock").onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    const ok=(await sha256($("#adminPw").value))===ADMIN_HASH;
+    if(!ok){ toast("Wrong password"); $("#adminPw").select(); return; }
+    try{ sessionStorage.setItem(ADMIN_KEY,"1"); }catch(_){}
+    $("#adminPw").value=""; if(syncOn()&&!commits) await loadCommits(); renderAdmin();
+  }catch(err){ toast(err.message); }
+};
+$("#adminLockBtn").onclick=()=>{ try{ sessionStorage.removeItem(ADMIN_KEY); }catch(_){} renderAdmin(); };
+$("#logFilter").oninput=renderAdmin;
+$("#logCsv").onclick=()=>{
+  const cell=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  const lines=[["time","who","event","details","task","date"].map(cell).join(",")];
+  for(const e of state.log.slice().reverse()) lines.push([e.t,e.who||"",EV_LABEL[e.ev]||e.ev,e.what||"",e.task||"",e.date||""].map(cell).join(","));
+  if(commits) for(const c of commits) lines.push([c.when||"",c.who||"",EV_LABEL.commit,c.msg,"",""].map(cell).join(","));
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`clime-changelog-${key(today)}.csv`; a.click(); URL.revokeObjectURL(a.href);
+};
+
 syncFreqFields();
 renderAll();
+startPolling();
+if(syncOn()) runSync("startup");
 </script>
 </body>
 </html>
